@@ -1,2 +1,48 @@
-# AmiDrop
-AirDrop-like Filesharing to AmigaOS
+# AmiDrop – Browser File Transfer for AmigaOS
+
+AmiDrop is a lightweight native **AmigaOS file transfer utility** for sending files from smartphones, PCs and other devices directly to an Amiga through a **web browser**. No companion app is required.
+
+## ✨ Features
+
+- Browser-based file transfer to AmigaOS
+- QR code for quick connection from phones and tablets
+- 6-digit pairing code for PCs and other devices
+- Direct streaming to disk with safe temporary files
+- Configurable receive folder and file size limit
+- Transfer history and progress display
+- Optimized **GadTools interface** for classic Amiga screen modes
+- Pixel-aspect-correct QR display for resolutions such as 640×200 and 640×256
+
+## 🖥️ Requirements
+
+- **AmigaOS 3.1 or newer**
+- TCP/IP stack providing `bsdsocket.library`
+- Network connection between the Amiga and sending device
+
+AmiDrop works with common Amiga TCP/IP stacks such as Roadshow, AmiTCP and Miami.
+
+## 🚀 Usage
+
+1. Start AmiDrop on the Amiga.
+2. Scan the displayed QR code or enter the shown address in a browser.
+3. Select a file and upload it directly to the configured receive folder.
+
+No software needs to be installed on the sending device.
+
+## 🔧 Build
+
+```sh
+make
+```
+
+The source is built for classic 68k Amiga systems using `m68k-amigaos-gcc`.
+
+## 📦 Version
+
+Current development release: **AmiDrop 1.0 RC5**
+
+## ⚖️ Credits
+
+AmiDrop © 2026 Andreas "Andiweli" Stürmer.
+
+QR code generation is based on work by Richard Moore / Project Nayuki.
