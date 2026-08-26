@@ -1,6 +1,8 @@
-# AmiDrop – Browser File Transfer for AmigaOS
+# AmiDrop – File Transfer for AmigaOS
 
 AmiDrop is a lightweight native **AmigaOS file transfer utility** for sending files from smartphones, PCs and other devices directly to an Amiga through a **web browser**. No companion app is required.
+
+<img width="500" height="368" alt="image" src="https://github.com/user-attachments/assets/ea6aae57-6970-4a40-8d12-f8584268a571" />
 
 ## ✨ Features
 
@@ -9,9 +11,7 @@ AmiDrop is a lightweight native **AmigaOS file transfer utility** for sending fi
 - 6-digit pairing code for PCs and other devices
 - Direct streaming to disk with safe temporary files
 - Configurable receive folder and file size limit
-- Transfer history and progress display
-- Optimized **GadTools interface** for classic Amiga screen modes
-- Pixel-aspect-correct QR display for resolutions such as 640×200 and 640×256
+- **GadTools interface** for classic Amiga screen modes
 
 ## 🖥️ Requirements
 
@@ -36,10 +36,6 @@ make
 ```
 
 The source is built for classic 68k Amiga systems using `m68k-amigaos-gcc`.
-
-## 📦 Version
-
-Current development release: **AmiDrop 1.0 RC5**
 
 ## ⚖️ Credits
 
