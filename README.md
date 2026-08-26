@@ -29,14 +29,6 @@ AmiDrop works with common Amiga TCP/IP stacks such as Roadshow, AmiTCP and Miami
 
 No software needs to be installed on the sending device.
 
-## 🔧 Build
-
-```sh
-make
-```
-
-The source is built for classic 68k Amiga systems using `m68k-amigaos-gcc`.
-
 ## ⚖️ Credits
 
 AmiDrop © 2026 Andreas "Andiweli" Stürmer.
