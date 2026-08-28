@@ -37,4 +37,6 @@ No software needs to be installed on the sending device.
 
 AmiDrop © 2026 Andreas "Andiweli" Stürmer.
 
+[![Support via PayPal](https://img.shields.io/badge/Support%20via-PayPal-0070BA?logo=paypal&logoColor=white)](https://paypal.me/andiweli)
+
 QR code generation is based on work by Richard Moore / Project Nayuki.
