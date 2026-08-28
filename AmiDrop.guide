@@ -1,0 +1,131 @@
+@database AmiDrop.guide
+@node Main "AmiDrop 1.0"
+@{b}AmiDrop 1.0@{ub}
+
+Send files from a phone, tablet or computer directly to your Amiga.
+No companion app is required.
+
+This package provides two frontends:
+  AmiDrop          - Classic GadTools, AmigaOS 3.1+
+  AmiDrop_ReAction - ReAction, AmigaOS 3.2+
+
+Both use the same preferences and transfer engine.
+
+@{b}Quick start@{ub}
+1. Start AmiDrop.
+2. Phone: scan the QR code.
+3. PC: open the displayed address and enter the 6-digit code.
+4. Choose files and send them.
+
+@{"Frontends" link Frontends}
+@{"Preferences" link Preferences}
+@{"Safety and failed transfers" link Safety}
+@{"ToolTypes" link ToolTypes}
+@{"Troubleshooting" link Troubleshooting}
+@{"About" link About}
+@endnode
+
+
+@node Frontends "Frontends"
+@{b}AmiDrop@{ub}
+  Classic Intuition/GadTools frontend for AmigaOS 3.1+.
+
+@{b}AmiDrop_ReAction@{ub}
+  Optional ReAction frontend for AmigaOS 3.2+. It uses native ReAction layout,
+  ListBrowser, FuelGauge, GetFile, Chooser, Integer and Checkbox gadgets.
+
+Only one frontend can run at a time. Both use ENVARC:AmiDrop.prefs.
+
+@{"Back" link Main}
+@endnode
+
+@node Preferences "Preferences"
+@{b}Project > Preferences...@{ub}
+
+Receive folder
+  Where completed files are stored.
+
+Max. file size
+  512 KB, 1 MB, 5 MB, 10 MB, 25 MB, 50 MB, 100 MB, 250 MB, 500 MB or 1 GB.
+
+Ignore free-space check
+  Normally AmiDrop requires the receive volume to hold the selected maximum
+  file size plus a small safety reserve. Enable this only for intentionally
+  small targets such as RAM: where you want to accept the risk of running out
+  of space.
+
+TCP port
+  Default: 8080. Valid range: 1024-65535.
+
+Start server on launch
+  If disabled, use Project > Start server.
+
+Use
+  Apply settings until AmiDrop is closed.
+
+Save
+  Apply and save settings permanently.
+
+@{"Back" link Main}
+@endnode
+
+@node Safety "Safety and failed transfers"
+AmiDrop writes incoming data to ADROP.PART first.
+Only a complete transfer is renamed to the final filename.
+
+If a transfer is aborted, times out, loses the network connection or cannot be
+written to disk, the partial file is removed.
+
+Five wrong login attempts lock access for 30 seconds.
+QR tokens and access codes are recreated whenever the server is restarted.
+
+@{"Back" link Main}
+@endnode
+
+@node ToolTypes "ToolTypes"
+Workbench ToolTypes and CLI assignments:
+
+PORT=8080
+MAXSIZEKB=51200
+RECEIVEDIR=Work:Downloads/AmiDrop
+STARTSERVER=YES
+IGNORESPACE=NO
+
+STARTSERVER and IGNORESPACE accept YES/NO, TRUE/FALSE, ON/OFF or 1/0.
+MAXSIZEKB is the precise limit in KB. Legacy MAXSIZE values in whole MB are
+still accepted.
+
+For WBStartup, the standard Workbench DONOTWAIT ToolType may also be used.
+AmiDrop ignores reserved Workbench ToolTypes.
+
+@{"Back" link Main}
+@endnode
+
+@node Troubleshooting "Troubleshooting"
+No IP address shown
+  Check that the TCP/IP stack is online and the Amiga has an IPv4 address.
+
+Port already in use
+  Choose another port in Preferences.
+
+Cannot write file
+  Check that the receive volume is mounted, writable and has enough space.
+
+Phone cannot connect
+  The phone and Amiga must be able to reach each other on the network.
+  Scan the current QR code again after a server restart.
+
+@{"Back" link Main}
+@endnode
+
+@node About "About"
+AmiDrop 1.0
+28.08.2026
+
+(c) 2026 Andreas 'Andiweli' Stürmer
+
+QR code generator: Richard Moore / Project Nayuki
+MIT licensed; see LICENSE-QRCode.txt
+
+@{"Back" link Main}
+@endnode
