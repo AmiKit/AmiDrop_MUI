@@ -1,5 +1,9 @@
 # AmiDrop – File Transfer for AmigaOS
 
+![AmigaOS](https://img.shields.io/badge/AmigaOS-3.0%2B-orange)
+![AI](https://img.shields.io/badge/AI-assisted%20coding-6e7781)
+[![Support via PayPal](https://img.shields.io/badge/Support%20via-PayPal-0070BA?logo=paypal&logoColor=white)](https://paypal.me/andiweli)
+
 AmiDrop is a lightweight native **AmigaOS file transfer utility** for sending files from smartphones, PCs and other devices directly to an Amiga through a **web browser**. No companion app is required.
 
 <img width="500" height="368" alt="image" src="https://github.com/user-attachments/assets/ea6aae57-6970-4a40-8d12-f8584268a571" />
