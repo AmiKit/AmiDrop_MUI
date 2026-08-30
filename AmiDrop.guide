@@ -1,15 +1,11 @@
 @database AmiDrop.guide
-@node Main "AmiDrop 1.0"
-@{b}AmiDrop 1.0@{ub}
+@node Main "AmiDrop 1.0.1"
+@{b}AmiDrop 1.0.1@{ub}
 
 Send files from a phone, tablet or computer directly to your Amiga.
 No companion app is required.
 
-This package provides two frontends:
-  AmiDrop          - Classic GadTools, AmigaOS 3.1+
-  AmiDrop_ReAction - ReAction, AmigaOS 3.2+
-
-Both use the same preferences and transfer engine.
+AmiDrop uses a native Intuition/GadTools interface and requires AmigaOS 3.0+.
 
 @{b}Quick start@{ub}
 1. Start AmiDrop.
@@ -17,7 +13,6 @@ Both use the same preferences and transfer engine.
 3. PC: open the displayed address and enter the 6-digit code.
 4. Choose files and send them.
 
-@{"Frontends" link Frontends}
 @{"Preferences" link Preferences}
 @{"Safety and failed transfers" link Safety}
 @{"ToolTypes" link ToolTypes}
@@ -25,19 +20,6 @@ Both use the same preferences and transfer engine.
 @{"About" link About}
 @endnode
 
-
-@node Frontends "Frontends"
-@{b}AmiDrop@{ub}
-  Classic Intuition/GadTools frontend for AmigaOS 3.1+.
-
-@{b}AmiDrop_ReAction@{ub}
-  Optional ReAction frontend for AmigaOS 3.2+. It uses native ReAction layout,
-  ListBrowser, FuelGauge, GetFile, Chooser, Integer and Checkbox gadgets.
-
-Only one frontend can run at a time. Both use ENVARC:AmiDrop.prefs.
-
-@{"Back" link Main}
-@endnode
 
 @node Preferences "Preferences"
 @{b}Project > Preferences...@{ub}
@@ -119,10 +101,12 @@ Phone cannot connect
 @endnode
 
 @node About "About"
-AmiDrop 1.0
-28.08.2026
+AmiDrop 1.0.1
+29.08.2026
 
 (c) 2026 Andreas 'Andiweli' Stürmer
+
+Icon by Mason
 
 QR code generator: Richard Moore / Project Nayuki
 MIT licensed; see LICENSE-QRCode.txt

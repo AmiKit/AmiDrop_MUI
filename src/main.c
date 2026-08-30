@@ -398,7 +398,7 @@ int main(int argc, char **argv)
     if (!open_libraries()) {
         if (IntuitionBase) {
             gui_message(NULL, "AmiDrop startup error",
-                        "AmiDrop requires AmigaOS 3.1+, gadtools.library, asl.library, icon.library and bsdsocket.library.");
+                        "AmiDrop requires AmigaOS 3.0+, gadtools.library, asl.library, icon.library and bsdsocket.library.");
         } else {
             printf("AmiDrop: required AmigaOS libraries or bsdsocket.library are missing.\n");
         }

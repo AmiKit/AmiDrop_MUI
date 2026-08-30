@@ -1,5 +1,4 @@
 AmiDrop
-AmiDrop_ReAction
 src/*.o
 tests/test_util
 tests/test_qr

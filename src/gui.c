@@ -1121,6 +1121,8 @@ static void draw_about_contents(struct AmiDropGui *gui, struct Window *window)
     draw_text_centered(rp, center_x, y,
                        "(c) 2026 Andreas 'Andiweli' St\374rmer");
     y += (WORD)(line_height + 4);
+    draw_text_centered(rp, center_x, y, "Icon by Mason");
+    y += line_height;
     draw_text_centered(rp, center_x, y, "QR code generator:");
     y += line_height;
     draw_text_centered(rp, center_x, y, "Richard Moore / Project Nayuki");
@@ -1136,6 +1138,7 @@ static WORD about_window_width(struct AmiDropGui *gui)
         "AmiDrop " AMIDROP_VERSION " (" AMIDROP_DATE ")",
         "File transfer for AmigaOS",
         "(c) 2026 Andreas 'Andiweli' St\374rmer",
+        "Icon by Mason",
         "QR code generator:",
         "Richard Moore / Project Nayuki",
         "MIT licensed",
@@ -1177,18 +1180,24 @@ void gui_show_about(struct AmiDropGui *gui)
     LONG top;
     BOOL done = FALSE;
     WORD width;
-    const WORD height = 158;
+    WORD height;
     WORD ok_left;
+    WORD ok_top;
+    WORD line_height;
 
     if (!gui || !gui->screen || !gui->visual_info) return;
 
     width = about_window_width(gui);
+    line_height = (gui->screen && gui->screen->Font)
+                    ? (WORD)(gui->screen->Font->ta_YSize + 4) : 12;
+    height = (WORD)(158 + line_height);
     ok_left = (WORD)((width - 88) / 2);
+    ok_top = (WORD)(119 + line_height);
 
     context = CreateContext(&glist);
     if (!context) return;
 
-    ok_gadget = create_button(gui, context, ok_left, 119, 88, 22, "OK", 201);
+    ok_gadget = create_button(gui, context, ok_left, ok_top, 88, 22, "OK", 201);
     if (!ok_gadget) goto cleanup;
 
     left = ((LONG)gui->screen->Width - width) / 2;

@@ -4,9 +4,9 @@
 #include <exec/types.h>
 
 #define AMIDROP_NAME                 "AmiDrop"
-#define AMIDROP_VERSION              "1.0"
-#define AMIDROP_VERSION_NUMBER       "1.0"
-#define AMIDROP_DATE                 "28.08.2026"
+#define AMIDROP_VERSION              "1.0.1"
+#define AMIDROP_VERSION_NUMBER       "1.0.1"
+#define AMIDROP_DATE                 "29.08.2026"
 #define AMIDROP_DEFAULT_PORT         8080
 #define AMIDROP_DEFAULT_LIMIT_KB     51200UL  /* 50 MB */
 #define AMIDROP_MIN_LIMIT_KB         512UL
