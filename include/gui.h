@@ -64,6 +64,7 @@ struct AmiDropGui {
     BOOL show_qr;
     BOOL compact_layout;
     BOOL low_height_layout;
+    BOOL show_transfer_information;
 
     struct List history_list;
     struct Node history_nodes[AMIDROP_TRANSFER_HISTORY];
@@ -87,7 +88,7 @@ struct AmiDropGui {
     BOOL render_force;
 };
 
-BOOL gui_open(struct AmiDropGui *gui);
+BOOL gui_open(struct AmiDropGui *gui, const struct AmiDropPrefs *prefs);
 void gui_close(struct AmiDropGui *gui);
 void gui_redraw(struct AmiDropGui *gui, const struct AmiDropServer *server,
                 const struct AmiDropPrefs *prefs);

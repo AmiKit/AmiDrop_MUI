@@ -69,6 +69,7 @@ void prefs_defaults(struct AmiDropPrefs *prefs)
     prefs->max_file_kb = AMIDROP_DEFAULT_LIMIT_KB;
     prefs->start_server = AMIDROP_DEFAULT_START_SERVER;
     prefs->ignore_free_space = FALSE;
+    prefs->show_transfer_information = TRUE;
 }
 
 static BOOL load_from_file(struct AmiDropPrefs *prefs, const char *path)
@@ -117,6 +118,8 @@ static BOOL load_from_file(struct AmiDropPrefs *prefs, const char *path)
             if (prefs_parse_yes_no(value, &boolean_value)) prefs->start_server = boolean_value;
         } else if (strcmp(key, "IgnoreFreeSpace") == 0) {
             if (prefs_parse_yes_no(value, &boolean_value)) prefs->ignore_free_space = boolean_value;
+        } else if (strcmp(key, "ShowTransferInformation") == 0) {
+            if (prefs_parse_yes_no(value, &boolean_value)) prefs->show_transfer_information = boolean_value;
         }
     }
 
@@ -147,6 +150,8 @@ BOOL prefs_save(const struct AmiDropPrefs *prefs)
     fprintf(file, "MaxFileKB=%lu\n", (unsigned long)prefs->max_file_kb);
     fprintf(file, "StartServer=%s\n", prefs->start_server ? "YES" : "NO");
     fprintf(file, "IgnoreFreeSpace=%s\n", prefs->ignore_free_space ? "YES" : "NO");
+    fprintf(file, "ShowTransferInformation=%s\n",
+            prefs->show_transfer_information ? "YES" : "NO");
     fclose(file);
     return TRUE;
 }

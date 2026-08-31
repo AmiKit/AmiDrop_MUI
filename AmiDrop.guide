@@ -1,6 +1,6 @@
 @database AmiDrop.guide
-@node Main "AmiDrop 1.0.1"
-@{b}AmiDrop 1.0.1@{ub}
+@node Main "AmiDrop 1.1"
+@{b}AmiDrop 1.1@{ub}
 
 Send files from a phone, tablet or computer directly to your Amiga.
 No companion app is required.
@@ -42,6 +42,11 @@ TCP port
 Start server on launch
   If disabled, use Project > Start server.
 
+Show transfer information
+  Shows the successful-transfer list and Clear list button in the lower part
+  of the main window. If disabled, that section is hidden and the main window
+  opens at a lower height.
+
 Use
   Apply settings until AmiDrop is closed.
 
@@ -72,8 +77,9 @@ MAXSIZEKB=51200
 RECEIVEDIR=Work:Downloads/AmiDrop
 STARTSERVER=YES
 IGNORESPACE=NO
+SHOWTRANSFERINFO=YES
 
-STARTSERVER and IGNORESPACE accept YES/NO, TRUE/FALSE, ON/OFF or 1/0.
+STARTSERVER, IGNORESPACE and SHOWTRANSFERINFO accept YES/NO, TRUE/FALSE, ON/OFF or 1/0.
 MAXSIZEKB is the precise limit in KB. Legacy MAXSIZE values in whole MB are
 still accepted.
 
@@ -97,16 +103,20 @@ Phone cannot connect
   The phone and Amiga must be able to reach each other on the network.
   Scan the current QR code again after a server restart.
 
+  Very old TCP/IP stacks such as MIAMI may cause problems with incoming TCP
+  connections even when the Amiga can still be pinged from another device.
+  If this occurs, switch to a current TCP/IP stack such as Roadshow.
+
 @{"Back" link Main}
 @endnode
 
 @node About "About"
-AmiDrop 1.0.1
-29.08.2026
+AmiDrop 1.1
+31.08.2026
 
 (c) 2026 Andreas 'Andiweli' Stürmer
 
-Icon by Mason
+Icon by Martin 'Mason' Merz
 
 QR code generator: Richard Moore / Project Nayuki
 MIT licensed; see LICENSE-QRCode.txt

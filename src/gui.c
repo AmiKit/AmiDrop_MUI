@@ -251,7 +251,7 @@ static void fit_qr_dimensions(struct AmiDropGui *gui, WORD desired_height,
     *qr_height = height;
 }
 
-static void configure_main_geometry(struct AmiDropGui *gui)
+static void configure_main_geometry(struct AmiDropGui *gui, BOOL show_transfer_information)
 {
     WORD width;
     WORD height;
@@ -275,10 +275,24 @@ static void configure_main_geometry(struct AmiDropGui *gui)
             height = gui->screen->Height > 4 ? (WORD)(gui->screen->Height - 4) : (WORD)gui->screen->Height;
     }
 
-    gui->window_width = width;
-    gui->window_height = height;
+    /* Layout mode follows the available screen height, not the optional
+       transfer-history section.  Hiding that section must make the window
+       shorter without accidentally switching a 640x256 setup to the special
+       640x200 QR/text geometry. */
     gui->compact_layout = height < 320 ? TRUE : FALSE;
     gui->low_height_layout = height <= 212 ? TRUE : FALSE;
+    gui->show_transfer_information = show_transfer_information;
+
+    if (!show_transfer_information) {
+        WORD compact_height;
+        if (gui->low_height_layout) compact_height = 154;
+        else if (gui->compact_layout) compact_height = 202;
+        else compact_height = 240;
+        if (height > compact_height) height = compact_height;
+    }
+
+    gui->window_width = width;
+    gui->window_height = height;
     gui->text_left = width < 360 ? 10 : 18;
 
     gui->show_qr = (width >= 440) ? TRUE : FALSE;
@@ -369,7 +383,7 @@ static void configure_main_geometry(struct AmiDropGui *gui)
         gui->progress_right = gui->text_right;
 }
 
-BOOL gui_open(struct AmiDropGui *gui)
+BOOL gui_open(struct AmiDropGui *gui, const struct AmiDropPrefs *prefs)
 {
     struct Gadget *context;
     struct Gadget *last;
@@ -386,7 +400,7 @@ BOOL gui_open(struct AmiDropGui *gui)
     WORD buttons_left;
     int ti = 0;
 
-    if (!gui) return FALSE;
+    if (!gui || !prefs) return FALSE;
     memset(gui, 0, sizeof(*gui));
     init_exec_list(&gui->history_list);
     gui->history_generation = ~0UL;
@@ -395,7 +409,7 @@ BOOL gui_open(struct AmiDropGui *gui)
 
     gui->screen = LockPubScreen(NULL);
     if (!gui->screen) return FALSE;
-    configure_main_geometry(gui);
+    configure_main_geometry(gui, prefs->show_transfer_information);
 
     vi_tags[0].ti_Tag = TAG_DONE;
     vi_tags[0].ti_Data = 0;
@@ -423,59 +437,84 @@ BOOL gui_open(struct AmiDropGui *gui)
     }
     last = context;
 
-    if (gui->low_height_layout) {
-        /* Keep a real, usable GadTools ListView.  The previous 8-pixel fallback
-           was below the practical ListView domain on a 200-line Workbench and
-           could make OpenWindowTagList() fail. */
-        buttons_top = (WORD)(gui->window_height - 30);
-        /* Percentage is inside the progress bar, so the ListView heading can
-           start comfortably below both the bar and the compact QR block. */
-        history_top = 118;
-        history_height = (WORD)(buttons_top - history_top - 10);
-        if (history_height < 24) {
-            history_height = 24;
-            history_top = (WORD)(buttons_top - history_height - 10);
+    if (gui->show_transfer_information) {
+        if (gui->low_height_layout) {
+            /* Keep a real, usable GadTools ListView.  The previous 8-pixel fallback
+               was below the practical ListView domain on a 200-line Workbench and
+               could make OpenWindowTagList() fail. */
+            buttons_top = (WORD)(gui->window_height - 30);
+            /* Percentage is inside the progress bar, so the ListView heading can
+               start comfortably below both the bar and the compact QR block. */
+            history_top = 118;
+            history_height = (WORD)(buttons_top - history_top - 10);
+            if (history_height < 24) {
+                history_height = 24;
+                history_top = (WORD)(buttons_top - history_height - 10);
+            }
+        } else {
+            buttons_top = (WORD)(gui->window_height - (gui->compact_layout ? 31 : 39));
+            if (buttons_top < 120) buttons_top = 120;
+            if (buttons_top > gui->window_height - 26) buttons_top = (WORD)(gui->window_height - 26);
+            history_top = gui->compact_layout ? (WORD)(gui->percent_y + 20) : 212;
+            history_height = (WORD)(buttons_top - history_top - 16);
+            if (history_height < 24) {
+                history_height = 24;
+                history_top = (WORD)(buttons_top - history_height - 12);
+            }
         }
+
+        gui->history_gadget = create_history_list(gui, last, gui->text_left, history_top,
+            (WORD)(gui->window_width - gui->text_left * 2), history_height);
+        if (!gui->history_gadget) { gui_close(gui); return FALSE; }
+        last = gui->history_gadget;
+
+        if (gui->window_width >= 500) {
+            buttons_left = 72;
+            button_width = 112;
+            gap = 10;
+        } else {
+            gap = gui->window_width < 360 ? 5 : 10;
+            buttons_left = gui->text_left;
+            button_width = (WORD)((gui->window_width - buttons_left * 2 - gap * 2) / 3);
+        }
+
+        gui->abort_gadget = create_button(gui, last, buttons_left, buttons_top, button_width, 22,
+                                          "Abort transfer", GID_ABORT);
+        if (!gui->abort_gadget) { gui_close(gui); return FALSE; }
+        last = gui->abort_gadget;
+
+        gui->clear_gadget = create_button(gui, last, (WORD)(buttons_left + button_width + gap),
+                                          buttons_top, button_width, 22, "Clear list", GID_CLEAR);
+        if (!gui->clear_gadget) { gui_close(gui); return FALSE; }
+        last = gui->clear_gadget;
+
+        gui->quit_gadget = create_button(gui, last, (WORD)(buttons_left + (button_width + gap) * 2),
+                                         buttons_top, button_width, 22, "Quit", GID_QUIT);
+        if (!gui->quit_gadget) { gui_close(gui); return FALSE; }
     } else {
-        buttons_top = (WORD)(gui->window_height - (gui->compact_layout ? 31 : 39));
-        if (buttons_top < 120) buttons_top = 120;
-        if (buttons_top > gui->window_height - 26) buttons_top = (WORD)(gui->window_height - 26);
-        history_top = gui->compact_layout ? (WORD)(gui->percent_y + 20) : 212;
-        history_height = (WORD)(buttons_top - history_top - 16);
-        if (history_height < 24) {
-            history_height = 24;
-            history_top = (WORD)(buttons_top - history_height - 12);
-        }
-    }
-
-    gui->history_gadget = create_history_list(gui, last, gui->text_left, history_top,
-        (WORD)(gui->window_width - gui->text_left * 2), history_height);
-    if (!gui->history_gadget) { gui_close(gui); return FALSE; }
-    last = gui->history_gadget;
-
-    if (gui->window_width >= 500) {
-        buttons_left = 72;
-        button_width = 112;
+        /* Without transfer information there is no history ListView and no
+           Clear-list action.  Keep Abort available for active transfers and
+           Quit as the second compact bottom button. */
+        buttons_top = (WORD)(gui->window_height - (gui->low_height_layout ? 30 : 34));
         gap = 10;
-    } else {
-        gap = gui->window_width < 360 ? 5 : 10;
-        buttons_left = gui->text_left;
-        button_width = (WORD)((gui->window_width - buttons_left * 2 - gap * 2) / 3);
+        if (gui->window_width >= 500) {
+            button_width = 112;
+            buttons_left = (WORD)((gui->window_width - button_width * 2 - gap) / 2);
+        } else {
+            gap = gui->window_width < 360 ? 5 : 10;
+            buttons_left = gui->text_left;
+            button_width = (WORD)((gui->window_width - buttons_left * 2 - gap) / 2);
+        }
+
+        gui->abort_gadget = create_button(gui, last, buttons_left, buttons_top, button_width, 22,
+                                          "Abort transfer", GID_ABORT);
+        if (!gui->abort_gadget) { gui_close(gui); return FALSE; }
+        last = gui->abort_gadget;
+
+        gui->quit_gadget = create_button(gui, last, (WORD)(buttons_left + button_width + gap),
+                                         buttons_top, button_width, 22, "Quit", GID_QUIT);
+        if (!gui->quit_gadget) { gui_close(gui); return FALSE; }
     }
-
-    gui->abort_gadget = create_button(gui, last, buttons_left, buttons_top, button_width, 22,
-                                      "Abort transfer", GID_ABORT);
-    if (!gui->abort_gadget) { gui_close(gui); return FALSE; }
-    last = gui->abort_gadget;
-
-    gui->clear_gadget = create_button(gui, last, (WORD)(buttons_left + button_width + gap),
-                                      buttons_top, button_width, 22, "Clear list", GID_CLEAR);
-    if (!gui->clear_gadget) { gui_close(gui); return FALSE; }
-    last = gui->clear_gadget;
-
-    gui->quit_gadget = create_button(gui, last, (WORD)(buttons_left + (button_width + gap) * 2),
-                                     buttons_top, button_width, 22, "Quit", GID_QUIT);
-    if (!gui->quit_gadget) { gui_close(gui); return FALSE; }
 
     left = ((LONG)gui->screen->Width - gui->window_width) / 2;
     top = ((LONG)gui->screen->Height - gui->window_height) / 2;
@@ -1121,7 +1160,7 @@ static void draw_about_contents(struct AmiDropGui *gui, struct Window *window)
     draw_text_centered(rp, center_x, y,
                        "(c) 2026 Andreas 'Andiweli' St\374rmer");
     y += (WORD)(line_height + 4);
-    draw_text_centered(rp, center_x, y, "Icon by Mason");
+    draw_text_centered(rp, center_x, y, "Icon by Martin 'Mason' Merz");
     y += line_height;
     draw_text_centered(rp, center_x, y, "QR code generator:");
     y += line_height;
@@ -1138,7 +1177,7 @@ static WORD about_window_width(struct AmiDropGui *gui)
         "AmiDrop " AMIDROP_VERSION " (" AMIDROP_DATE ")",
         "File transfer for AmigaOS",
         "(c) 2026 Andreas 'Andiweli' St\374rmer",
-        "Icon by Mason",
+        "Icon by Martin 'Mason' Merz",
         "QR code generator:",
         "Richard Moore / Project Nayuki",
         "MIT licensed",
@@ -1384,6 +1423,7 @@ int gui_preferences(struct AmiDropGui *gui, struct AmiDropPrefs *prefs)
     struct Gadget *port_gadget;
     struct Gadget *start_gadget;
     struct Gadget *ignore_gadget;
+    struct Gadget *transfer_info_gadget;
     struct Gadget *save_gadget;
     struct Gadget *use_gadget;
     struct Gadget *cancel_gadget;
@@ -1407,6 +1447,7 @@ int gui_preferences(struct AmiDropGui *gui, struct AmiDropPrefs *prefs)
     WORD y_port;
     WORD y_start;
     WORD y_ignore;
+    WORD y_transfer_info;
     WORD y_buttons;
     WORD button_gap;
     WORD button_width;
@@ -1418,7 +1459,7 @@ int gui_preferences(struct AmiDropGui *gui, struct AmiDropPrefs *prefs)
     size_index = max_size_index(prefs->max_file_kb);
 
     width = 470;
-    height = 236;
+    height = 260;
     if (gui->screen->Width < (UWORD)(width + 4))
         width = gui->screen->Width > 4 ? (WORD)(gui->screen->Width - 4) : (WORD)gui->screen->Width;
     if (gui->screen->Height < (UWORD)(height + 4)) {
@@ -1437,16 +1478,16 @@ int gui_preferences(struct AmiDropGui *gui, struct AmiDropPrefs *prefs)
     if (height <= 212) {
         /* 200-line Workbench: keep every gadget clear of the title and
            bottom borders instead of squeezing the normal Preferences layout. */
-        y_folder = 18; y_size = 45; y_port = 72; y_start = 99; y_ignore = 120;
-        y_buttons = (WORD)(height - 45);
+        y_folder = 18; y_size = 43; y_port = 68; y_start = 93; y_ignore = 112;
+        y_transfer_info = 131; y_buttons = 154;
     } else if (height < 225) {
-        y_folder = 20; y_size = 51; y_port = 82; y_start = 111; y_ignore = 133;
-        y_buttons = (WORD)(height - 37);
+        y_folder = 20; y_size = 48; y_port = 76; y_start = 103; y_ignore = 124;
+        y_transfer_info = 145; y_buttons = (WORD)(height - 34);
     } else {
         y_folder = 28; y_size = 62; y_port = 96; y_start = 128; y_ignore = 151;
-        y_buttons = 188;
+        y_transfer_info = 174; y_buttons = (WORD)(height - 39);
     }
-    if (y_buttons < y_ignore + 24) y_buttons = (WORD)(y_ignore + 24);
+    if (y_buttons < y_transfer_info + 23) y_buttons = (WORD)(y_transfer_info + 23);
 
     button_gap = width < 360 ? 5 : 10;
     button_left = width < 360 ? 10 : 24;
@@ -1517,6 +1558,17 @@ int gui_preferences(struct AmiDropGui *gui, struct AmiDropPrefs *prefs)
     ignore_gadget = CreateGadgetA(CHECKBOX_KIND, last, &ng, tags);
     if (!ignore_gadget) goto cleanup;
     last = ignore_gadget;
+
+    memset(&ng, 0, sizeof(ng));
+    ng.ng_LeftEdge = field_left; ng.ng_TopEdge = y_transfer_info; ng.ng_Width = 26; ng.ng_Height = 14;
+    ng.ng_GadgetText = (STRPTR)"Show transfer information"; ng.ng_TextAttr = gui->screen->Font;
+    ng.ng_GadgetID = 110;
+    ng.ng_Flags = PLACETEXT_RIGHT; ng.ng_VisualInfo = gui->visual_info;
+    tags[0].ti_Tag = GTCB_Checked; tags[0].ti_Data = prefs->show_transfer_information;
+    tags[1].ti_Tag = TAG_DONE; tags[1].ti_Data = 0;
+    transfer_info_gadget = CreateGadgetA(CHECKBOX_KIND, last, &ng, tags);
+    if (!transfer_info_gadget) goto cleanup;
+    last = transfer_info_gadget;
 
     save_gadget = create_button(gui, last, button_left, y_buttons, button_width, 22, "Save", 106);
     if (!save_gadget) goto cleanup;
@@ -1606,6 +1658,8 @@ int gui_preferences(struct AmiDropGui *gui, struct AmiDropPrefs *prefs)
                     prefs->max_file_kb = size_values_kb[size_index];
                     prefs->start_server = (start_gadget->Flags & GFLG_SELECTED) ? TRUE : FALSE;
                     prefs->ignore_free_space = ignore_space;
+                    prefs->show_transfer_information =
+                        (transfer_info_gadget->Flags & GFLG_SELECTED) ? TRUE : FALSE;
                     action = gadget->GadgetID == 106 ? PREFS_ACTION_SAVE : PREFS_ACTION_USE;
                     done = TRUE;
                 } else if (gadget->GadgetID == 108) {

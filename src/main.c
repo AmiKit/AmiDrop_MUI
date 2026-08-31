@@ -141,6 +141,11 @@ static BOOL apply_named_option(struct AmiDropPrefs *prefs, const char *name, con
         prefs->ignore_free_space = boolean_value;
         return TRUE;
     }
+    if (amidrop_ascii_casecmp_n(name, "SHOWTRANSFERINFO", 17) == 0 && name[16] == '\0') {
+        if (!prefs_parse_yes_no(value, &boolean_value)) return FALSE;
+        prefs->show_transfer_information = boolean_value;
+        return TRUE;
+    }
     return FALSE;
 }
 
@@ -183,12 +188,12 @@ static const char *find_tooltype_value(STRPTR *tooltypes, const char *key)
 
 static BOOL apply_tooltypes(struct AmiDropPrefs *prefs, STRPTR *tooltypes)
 {
-    static const char *keys[] = { "PORT", "MAXSIZE", "MAXSIZEKB", "RECEIVEDIR", "STARTSERVER", "IGNORESPACE" };
+    static const char *keys[] = { "PORT", "MAXSIZE", "MAXSIZEKB", "RECEIVEDIR", "STARTSERVER", "IGNORESPACE", "SHOWTRANSFERINFO" };
     UWORD i;
     BOOL all_valid = TRUE;
 
     if (!prefs || !tooltypes) return TRUE;
-    for (i = 0; i < 6; ++i) {
+    for (i = 0; i < 7; ++i) {
         const char *value = find_tooltype_value(tooltypes, keys[i]);
         if (value && !apply_named_option(prefs, keys[i], value)) all_valid = FALSE;
     }
@@ -237,6 +242,18 @@ static void present_server_alert(struct AmiDropGui *gui, struct AmiDropServer *s
     if (server->alert[0]) gui_message(gui, "AmiDrop", server->alert);
 }
 
+static BOOL reopen_main_gui(struct AmiDropGui *gui, const struct AmiDropServer *server,
+                            const struct AmiDropPrefs *prefs)
+{
+    if (!gui || !server || !prefs) return FALSE;
+    gui_close(gui);
+    if (!gui_open(gui, prefs)) return FALSE;
+    gui_sync_history(gui, server);
+    gui_set_abort_enabled(gui, server_is_uploading(server));
+    gui_redraw(gui, server, prefs);
+    return TRUE;
+}
+
 static BOOL apply_preferences(struct AmiDropGui *gui, struct AmiDropServer *server,
                               struct AmiDropPrefs *prefs,
                               const struct AmiDropPrefs *candidate, BOOL save)
@@ -244,11 +261,24 @@ static BOOL apply_preferences(struct AmiDropGui *gui, struct AmiDropServer *serv
     struct AmiDropPrefs old_prefs;
     BOOL was_running;
     BOOL port_changed;
+    BOOL layout_changed;
 
     if (!gui || !server || !prefs || !candidate) return FALSE;
     old_prefs = *prefs;
     was_running = server->running;
     port_changed = old_prefs.port != candidate->port;
+    layout_changed = old_prefs.show_transfer_information != candidate->show_transfer_information;
+
+    if (layout_changed && !reopen_main_gui(gui, server, candidate)) {
+        if (reopen_main_gui(gui, server, &old_prefs)) {
+            gui_message(gui, "Preferences not applied",
+                        "The main window could not be rebuilt with the requested transfer-information layout. The previous layout was restored.");
+        } else {
+            gui_message(NULL, "AmiDrop",
+                        "The main window could not be reopened. Please restart AmiDrop.");
+        }
+        return FALSE;
+    }
 
     if (was_running && port_changed) {
         server_stop(server);
@@ -267,11 +297,15 @@ static BOOL apply_preferences(struct AmiDropGui *gui, struct AmiDropServer *serv
                             "The new server settings could not be applied, and the previous server settings could not be restarted either. The server remains stopped. Open Preferences and check the port, receive folder and network.");
             }
             server->alert[0] = '\0';
+            if (layout_changed) reopen_main_gui(gui, server, &old_prefs);
             return FALSE;
         }
         gui_force_qr_redraw(gui);
     } else {
-        if (!server_apply_runtime_prefs(server, candidate)) return FALSE;
+        if (!server_apply_runtime_prefs(server, candidate)) {
+            if (layout_changed) reopen_main_gui(gui, server, &old_prefs);
+            return FALSE;
+        }
     }
 
     *prefs = *candidate;
@@ -414,10 +448,10 @@ int main(int argc, char **argv)
 
     if (!apply_launch_options(argc, argv, &prefs)) {
         gui_message(NULL, "AmiDrop ToolTypes",
-                    "One or more ToolTypes/command-line settings were invalid and were ignored.\n\nValid examples:\nPORT=8080\nMAXSIZEKB=51200\nRECEIVEDIR=Work:Downloads/AmiDrop\nSTARTSERVER=YES\nIGNORESPACE=NO");
+                    "One or more ToolTypes/command-line settings were invalid and were ignored.\n\nValid examples:\nPORT=8080\nMAXSIZEKB=51200\nRECEIVEDIR=Work:Downloads/AmiDrop\nSTARTSERVER=YES\nIGNORESPACE=NO\nSHOWTRANSFERINFO=YES");
     }
 
-    if (!gui_open(&gui)) {
+    if (!gui_open(&gui, &prefs)) {
         gui_message(NULL, "AmiDrop startup error", "Could not open the GadTools window.");
         release_single_instance();
         close_libraries();
