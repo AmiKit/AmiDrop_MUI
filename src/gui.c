@@ -17,11 +17,100 @@
 
 #include "gui.h"
 #include "prefs.h"
+#include "server.h"
+#include "qrcode.h"
+#include "util.h"
 
-extern struct Library *GadToolsBase;
-extern struct Library *AslBase;
 extern struct IntuitionBase *IntuitionBase;
 extern struct GfxBase *GfxBase;
+
+/* gadtools.library and asl.library are needed by this frontend only, so this
+   is where they are opened and closed. */
+struct Library *GadToolsBase = NULL;
+struct Library *AslBase = NULL;
+
+#define GID_ABORT   2
+#define GID_QUIT    3
+#define GID_HISTORY 4
+#define GID_CLEAR   5
+
+/* Private to the GadTools frontend.  main.c only ever sees a pointer. */
+struct AmiDropGui {
+    struct Screen *screen;
+    APTR visual_info;
+    struct Window *window;
+    struct Gadget *gadget_list;
+    struct Gadget *abort_gadget;
+    struct Gadget *quit_gadget;
+    struct Gadget *history_gadget;
+    struct Gadget *clear_gadget;
+    struct DrawInfo *draw_info;
+    struct Menu *menu;
+    ULONG signal_mask;
+
+    WORD window_width;
+    WORD window_height;
+    WORD text_left;
+    WORD text_right;
+    WORD text_start_y;
+    WORD text_step;
+    WORD bar_top;
+    WORD bar_bottom;
+    WORD progress_right;
+    WORD percent_y;
+    WORD qr_left;
+    WORD qr_top;
+    WORD qr_width;
+    WORD qr_height;
+    WORD qr_area_left;
+    WORD qr_area_top;
+    WORD qr_area_right;
+    WORD qr_area_bottom;
+    WORD qr_center_x;
+    WORD qr_label_y;
+    BOOL show_qr;
+    BOOL compact_layout;
+    BOOL low_height_layout;
+    /* Upstream 1.1 keeps this in the shared header; here it belongs to the
+       frontend that acts on it, like the rest of this struct. */
+    BOOL show_transfer_information;
+
+    struct List history_list;
+    struct Node history_nodes[AMIDROP_TRANSFER_HISTORY];
+    char history_text[AMIDROP_TRANSFER_HISTORY][AMIDROP_TRANSFER_DISPLAY_MAX];
+    ULONG history_generation;
+
+    QRCode qr;
+    UBYTE qr_modules[AMIDROP_QR_BUFFER_SIZE];
+    char qr_payload[96];
+    BOOL qr_valid;
+    BOOL qr_force_redraw;
+
+    /* Render cache for the GadTools frontend.  Network receive activity can
+       mark the server dirty for every data block, so avoid erasing/redrawing
+       unchanged text and progress graphics on every iteration. */
+    char rendered_lines[6][360];
+    BOOL rendered_line_valid[6];
+    ULONG rendered_percent;
+    WORD rendered_fill_right;
+    BOOL rendered_progress_valid;
+    BOOL render_force;
+
+    /* Event pump state.  A simple-refresh window has to be redrawn between
+       GT_BeginRefresh()/GT_EndRefresh(), and one IDCMP_MENUPICK can carry a
+       whole chain of selected items.  Both are handled here so that the main
+       loop never has to know about either. */
+    BOOL refresh_pending;
+    UWORD pending_menu_selection;
+};
+
+/* AmiDrop is a single-instance program, so the frontend keeps its state in
+   one static object rather than allocating it.  Same approach the server and
+   preferences already use. */
+static struct AmiDropGui the_gui;
+static BOOL the_gui_in_use = FALSE;
+
+static void gui_close(struct AmiDropGui *gui);
 
 static void init_exec_list(struct List *list)
 {
@@ -383,7 +472,7 @@ static void configure_main_geometry(struct AmiDropGui *gui, BOOL show_transfer_i
         gui->progress_right = gui->text_right;
 }
 
-BOOL gui_open(struct AmiDropGui *gui, const struct AmiDropPrefs *prefs)
+static BOOL gui_open(struct AmiDropGui *gui, const struct AmiDropPrefs *prefs)
 {
     struct Gadget *context;
     struct Gadget *last;
@@ -406,6 +495,8 @@ BOOL gui_open(struct AmiDropGui *gui, const struct AmiDropPrefs *prefs)
     gui->history_generation = ~0UL;
     gui->qr_force_redraw = TRUE;
     gui->render_force = TRUE;
+    /* MENUNULL is not zero, so this cannot be left to the memset above. */
+    gui->pending_menu_selection = MENUNULL;
 
     gui->screen = LockPubScreen(NULL);
     if (!gui->screen) return FALSE;
@@ -548,7 +639,7 @@ BOOL gui_open(struct AmiDropGui *gui, const struct AmiDropPrefs *prefs)
     return TRUE;
 }
 
-void gui_close(struct AmiDropGui *gui)
+static void gui_close(struct AmiDropGui *gui)
 {
     if (!gui) return;
     if (gui->draw_info && gui->screen) {
@@ -576,6 +667,45 @@ void gui_close(struct AmiDropGui *gui)
         UnlockPubScreen(NULL, gui->screen);
         gui->screen = NULL;
     }
+}
+
+static void close_toolkit_libraries(void)
+{
+    if (AslBase) { CloseLibrary(AslBase); AslBase = NULL; }
+    if (GadToolsBase) { CloseLibrary(GadToolsBase); GadToolsBase = NULL; }
+}
+
+struct AmiDropGui *gui_create(const struct AmiDropPrefs *prefs)
+{
+    if (the_gui_in_use || !prefs) return NULL;
+
+    GadToolsBase = OpenLibrary((STRPTR)"gadtools.library", 39);
+    AslBase = OpenLibrary((STRPTR)"asl.library", 39);
+    if (!GadToolsBase || !AslBase) {
+        close_toolkit_libraries();
+        return NULL;
+    }
+
+    if (!gui_open(&the_gui, prefs)) {
+        close_toolkit_libraries();
+        return NULL;
+    }
+
+    the_gui_in_use = TRUE;
+    return &the_gui;
+}
+
+void gui_destroy(struct AmiDropGui *gui)
+{
+    if (!gui) return;
+    gui_close(gui);
+    the_gui_in_use = FALSE;
+    close_toolkit_libraries();
+}
+
+ULONG gui_signal_mask(const struct AmiDropGui *gui)
+{
+    return gui ? gui->signal_mask : 0UL;
 }
 
 static void draw_text(struct RastPort *rp, WORD x, WORD y, const char *text)
@@ -674,7 +804,10 @@ static BOOL update_qr(struct AmiDropGui *gui, const struct AmiDropServer *server
     if (!gui) return FALSE;
     was_valid = gui->qr_valid;
 
-    if (!server || !server->address[0] || !server->session_token[0]) {
+    /* Until an IPv4 address is found, server->address is the literal
+       "http://<Amiga-IP>:8080/" template - a scannable code for a dead URL. */
+    if (!server || !server->address_valid ||
+        !server->address[0] || !server->session_token[0]) {
         gui->qr_valid = FALSE;
         gui->qr_payload[0] = '\0';
         return was_valid;
@@ -961,7 +1094,8 @@ static void format_limit_text(char *dst, size_t dst_size, ULONG max_file_kb, con
 }
 
 /* Split the status value at a word boundary using the actual screen font.
-   Two rows are enough for all status strings emitted by server.c, including
+   Two rows are enough for the status strings this program produces - from
+   server.c and, since the frontends were merged, from main.c too - including
    the longest authentication message, on the compact 640x256 layout. */
 static void format_status_lines(struct RastPort *rp, WORD left, WORD right,
                                 const char *status,
@@ -1015,8 +1149,8 @@ static void format_status_lines(struct RastPort *rp, WORD left, WORD right,
     if (*rest) snprintf(second, second_size, "%s%s", indent, rest);
 }
 
-void gui_redraw(struct AmiDropGui *gui, const struct AmiDropServer *server,
-                const struct AmiDropPrefs *prefs)
+static void redraw_contents(struct AmiDropGui *gui, const struct AmiDropServer *server,
+                            const struct AmiDropPrefs *prefs)
 {
     struct RastPort *rp;
     UWORD text_pen = 1;
@@ -1078,7 +1212,7 @@ void gui_redraw(struct AmiDropGui *gui, const struct AmiDropServer *server,
     if (gui->qr_force_redraw) redraw_qr_area(gui, rp, text_pen, back_pen);
 
     if (server->uploading && server->upload_total > 0) {
-        percent = (ULONG)(((unsigned long long)server->upload_received * 100ULL) / server->upload_total);
+        percent = (ULONG)amidrop_percent(server->upload_received, server->upload_total);
         if (percent > 100) percent = 100;
     } else if (strncmp(server->status, "Received:", 9) == 0) {
         percent = 100;
@@ -1086,6 +1220,24 @@ void gui_redraw(struct AmiDropGui *gui, const struct AmiDropServer *server,
     draw_progress_cached(gui, rp, percent, text_pen, back_pen, fill_pen);
 
     gui->render_force = FALSE;
+}
+
+void gui_redraw(struct AmiDropGui *gui, const struct AmiDropServer *server,
+                const struct AmiDropPrefs *prefs)
+{
+    if (!gui || !gui->window || !server || !prefs) return;
+
+    if (gui->refresh_pending) {
+        /* A simple-refresh window must be redrawn between these two calls;
+           GT_BeginRefresh() also takes care of the gadgets for us. */
+        gui->refresh_pending = FALSE;
+        GT_BeginRefresh(gui->window);
+        redraw_contents(gui, server, prefs);
+        GT_EndRefresh(gui->window, TRUE);
+        return;
+    }
+
+    redraw_contents(gui, server, prefs);
 }
 
 void gui_set_abort_enabled(struct AmiDropGui *gui, BOOL enabled)
@@ -1099,7 +1251,7 @@ void gui_set_abort_enabled(struct AmiDropGui *gui, BOOL enabled)
     GT_SetGadgetAttrsA(gui->abort_gadget, gui->window, NULL, tags);
 }
 
-ULONG gui_menu_action(struct AmiDropGui *gui, UWORD selection, UWORD *next_selection)
+static ULONG menu_action(struct AmiDropGui *gui, UWORD selection, UWORD *next_selection)
 {
     struct MenuItem *item;
     if (next_selection) *next_selection = MENUNULL;
@@ -1108,6 +1260,88 @@ ULONG gui_menu_action(struct AmiDropGui *gui, UWORD selection, UWORD *next_selec
     if (!item) return 0;
     if (next_selection) *next_selection = item->NextSelect;
     return (ULONG)GTMENUITEM_USERDATA(item);
+}
+
+/* One IDCMP_MENUPICK can carry a chain of selected items.  Walk it one entry
+   per call so the main loop sees an ordinary sequence of menu events. */
+static BOOL pull_menu_event(struct AmiDropGui *gui, struct AmiDropGuiEvent *event)
+{
+    while (gui->pending_menu_selection != MENUNULL) {
+        UWORD selection = gui->pending_menu_selection;
+        ULONG action = menu_action(gui, selection, &gui->pending_menu_selection);
+        if (action) {
+            event->type = GUI_EVENT_MENU;
+            event->value = action;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+void gui_signals_received(struct AmiDropGui *gui, ULONG signals)
+{
+    /* Intuition delivers the messages themselves; the signal bits carry
+       no extra information for this frontend. */
+    (void)gui;
+    (void)signals;
+}
+
+BOOL gui_next_event(struct AmiDropGui *gui, struct AmiDropGuiEvent *event)
+{
+    struct IntuiMessage *message;
+
+    if (!event) return FALSE;
+    event->type = GUI_EVENT_NONE;
+    event->value = 0;
+    if (!gui || !gui->window) return FALSE;
+
+    /* Anything left over from a previous multi-selection comes first. */
+    if (pull_menu_event(gui, event)) return TRUE;
+
+    while ((message = GT_GetIMsg(gui->window->UserPort)) != NULL) {
+        ULONG msg_class = message->Class;
+        UWORD code = message->Code;
+        APTR iaddress = message->IAddress;
+        GT_ReplyIMsg(message);
+
+        if (msg_class == IDCMP_CLOSEWINDOW) {
+            event->type = GUI_EVENT_QUIT;
+            return TRUE;
+        } else if (msg_class == IDCMP_REFRESHWINDOW) {
+            gui->refresh_pending = TRUE;
+            /* Must go through gui_force_qr_redraw(): it also sets
+               render_force, without which the cached text lines and the
+               progress bar are considered still valid and are NOT repainted
+               after Intuition exposed the window.  Upstream's main.c called
+               exactly this function here. */
+            gui_force_qr_redraw(gui);
+            event->type = GUI_EVENT_REFRESH;
+            return TRUE;
+        } else if (msg_class == IDCMP_MENUPICK) {
+            gui->pending_menu_selection = code;
+            if (pull_menu_event(gui, event)) return TRUE;
+        } else if (msg_class == IDCMP_GADGETUP) {
+            struct Gadget *gadget = (struct Gadget *)iaddress;
+            if (!gadget) continue;
+
+            if (gadget->GadgetID == GID_QUIT) {
+                event->type = GUI_EVENT_QUIT;
+                return TRUE;
+            } else if (gadget->GadgetID == GID_ABORT) {
+                event->type = GUI_EVENT_ABORT;
+                return TRUE;
+            } else if (gadget->GadgetID == GID_CLEAR) {
+                event->type = GUI_EVENT_CLEAR;
+                return TRUE;
+            }
+        }
+    }
+    return FALSE;
+}
+
+const char *gui_startup_hint(void)
+{
+    return "This build needs gadtools.library and asl.library (AmigaOS 3.0+).";
 }
 
 void gui_message(struct AmiDropGui *gui, const char *title, const char *text)
@@ -1402,7 +1636,9 @@ static BOOL confirm_receive_capacity(struct Window *parent, const char *dir,
     memset(&easy, 0, sizeof(easy));
     easy.es_StructSize = sizeof(easy);
     easy.es_Title = (STRPTR)"AmiDrop - low free space";
-    easy.es_TextFormat = (STRPTR)body;
+    /* Every other requester in this file goes through the wrapper; this one
+       was the exception, and its body is the longest of them. */
+    easy.es_TextFormat = (STRPTR)wrap_requester_text(parent, body);
     easy.es_GadgetFormat = (STRPTR)"Ignore|Cancel";
     if (EasyRequestArgs(parent, &easy, NULL, NULL) == 1) {
         *ignore_free_space = TRUE;

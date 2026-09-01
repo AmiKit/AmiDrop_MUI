@@ -218,3 +218,155 @@ int amidrop_session_token_matches(const char *candidate, const char *expected)
     }
     return diff == 0;
 }
+
+size_t amidrop_compose_url(char *dst, size_t dst_size, const char *address,
+                           const char *token)
+{
+    size_t alen, tlen, need;
+
+    if (!dst || dst_size == 0) return 0;
+    dst[0] = '\0';
+    if (!address || !token || !address[0] || !token[0]) return 0;
+
+    alen = strlen(address);
+    tlen = strlen(token);
+    need = alen + 3 + tlen;             /* "?t=" */
+    if (need + 1 > dst_size) return 0;
+
+    memcpy(dst, address, alen);
+    dst[alen]     = '?';
+    dst[alen + 1] = 't';
+    dst[alen + 2] = '=';
+    memcpy(dst + alen + 3, token, tlen);
+    dst[need] = '\0';
+    return need;
+}
+
+static void put_be32(unsigned char *dst, unsigned long value)
+{
+    dst[0] = (unsigned char)((value >> 24) & 0xFF);
+    dst[1] = (unsigned char)((value >> 16) & 0xFF);
+    dst[2] = (unsigned char)((value >> 8) & 0xFF);
+    dst[3] = (unsigned char)(value & 0xFF);
+}
+
+size_t amidrop_build_ftxt(unsigned char *dst, size_t dst_size, const char *text)
+{
+    size_t len, pad, total;
+
+    if (!dst || !text) return 0;
+    len = strlen(text);
+    if (len == 0) return 0;
+    pad = len & 1;
+    total = 20 + len + pad;
+    if (total > dst_size) return 0;
+
+    memcpy(dst, "FORM", 4);
+    put_be32(dst + 4, (unsigned long)(4 + 8 + len + pad));
+    memcpy(dst + 8, "FTXT", 4);
+    memcpy(dst + 12, "CHRS", 4);
+    put_be32(dst + 16, (unsigned long)len);
+    memcpy(dst + 20, text, len);
+    if (pad) dst[20 + len] = 0;
+    return total;
+}
+
+int amidrop_qr_payload_current(const char *payload, const char *address,
+                               const char *token)
+{
+    size_t alen;
+
+    if (!payload || !address || !token) return 0;
+    if (!payload[0] || !address[0] || !token[0]) return 0;
+
+    alen = strlen(address);
+    if (strncmp(payload, address, alen) != 0) return 0;
+    if (payload[alen] != '?' || payload[alen + 1] != 't' ||
+        payload[alen + 2] != '=') return 0;
+    return strcmp(payload + alen + 3, token) == 0;
+}
+
+unsigned long amidrop_percent(unsigned long done, unsigned long total)
+{
+    if (!total) return 0;
+    if (done >= total) return 100;
+
+    /* done * 100 overflows 32 bits above ~42 MB, and a 64-bit multiply and
+       divide are software routines on this target.  Scaling both sides down
+       until the multiply is safe keeps it in 32-bit arithmetic; the loss is
+       at most one part in 100, which a percentage cannot show. */
+    while (done > 42949672UL) {
+        done >>= 4;
+        total >>= 4;
+    }
+    if (!total) return 100;
+    return (done * 100UL) / total;
+}
+
+/* Requesters do not word-wrap.  Intuition clips at the window edge and MUI
+   Text clips too, so the 140-200 character diagnostics this program produces
+   arrived unreadable in the MUI and ReAction builds.  Those two use this;
+   the GadTools frontend keeps its own wrap_requester_text(), which measures
+   with the actual screen font instead of counting characters, and is better
+   for that reason. */
+char *amidrop_wrap_text(const char *src, char *dst, size_t dst_size, size_t columns)
+{
+    size_t out = 0;
+    size_t line = 0;
+
+    if (!dst || dst_size == 0) return dst;
+    dst[0] = '\0';
+    if (!src) return dst;
+    if (columns < 8) columns = 8;
+
+    while (*src && out + 1 < dst_size) {
+        size_t word;
+        size_t i;
+
+        if (*src == '\n') {          /* honour breaks the caller put in */
+            /* A blank run just before it would otherwise be left at the end
+               of the line, the same way the wrap point already guards. */
+            while (out > 0 && dst[out - 1] == ' ') --out;
+            dst[out++] = '\n';
+            line = 0;
+            ++src;
+            continue;
+        }
+        if (*src == ' ' || *src == '\t') {
+            /* A whole run collapses to one blank.  Emitting each of them and
+               only stripping one at the wrap point let a line run past the
+               column count and end in a space (found by fuzzing). */
+            while (*src == ' ' || *src == '\t') ++src;
+            /* Never at a line start, so a wrapped line has no leading blank. */
+            if (line > 0 && out + 1 < dst_size) {
+                dst[out++] = ' ';
+                ++line;
+            }
+            continue;
+        }
+
+        for (word = 0; src[word] && src[word] != ' ' &&
+                       src[word] != '\t' && src[word] != '\n'; ++word)
+            ;
+
+        /* Break before a word that would overflow - unless it is alone on
+           the line, in which case it has to be let through and clipped. */
+        if (line + word > columns && line > 0) {
+            while (out > 0 && dst[out - 1] == ' ') --out;
+            if (out + 1 >= dst_size) break;
+            dst[out++] = '\n';
+            line = 0;
+        }
+
+        for (i = 0; i < word && out + 1 < dst_size; ++i) {
+            dst[out++] = src[i];
+            ++line;
+        }
+        src += word;
+    }
+
+    /* A trailing space would show as a ragged line end. */
+    while (out > 0 && dst[out - 1] == ' ') --out;
+    dst[out] = '\0';
+    return dst;
+}

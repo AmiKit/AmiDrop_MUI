@@ -1,5 +1,9 @@
 AmiDrop
-src/*.o
+AmiDrop_MUI
+AmiDrop_ReAction
+obj/
 tests/test_util
 tests/test_qr
 *.bak
+build/
+Downloads/

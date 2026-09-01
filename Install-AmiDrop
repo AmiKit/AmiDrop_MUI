@@ -1,0 +1,95 @@
+; Installer script for AmiDrop_MUI 1.1
+; Compatible with Commodore/Amiga Technologies Installer V43.3
+;
+; Source layout expected:
+;
+;   Install/
+;     Install-AmiDrop
+;     Setup/
+;       ... files to install ...
+;
+; Everything located inside Setup/ is copied to the selected destination.
+; The selected application drawer itself is used as the destination.
+; No AmiDrop subdrawer is created automatically.
+
+(set @app-name "AmiDrop_MUI")
+(set @default-dest "SYS:")
+
+; ----------------------------------------------------------------------
+; Welcome
+; ----------------------------------------------------------------------
+
+(welcome
+    "AmiDrop_MUI 1.1\nBrowser-based File Transfer for AmigaOS 3.0+\nMUI interface - requires MUI 3.8 or newer\n(c) 2026 Andreas 'Andiweli' Stuermer\nMUI edition by Jan Zahurancik / AmiKit"
+)
+
+; AmiDrop_MUI cannot start without muimaster.library.  Installing is still
+; allowed - MUI may live on another boot partition or come later.
+(if (= (exists "LIBS:muimaster.library") 0)
+    (message
+        "muimaster.library was not found in LIBS:.\n\n"
+        "AmiDrop_MUI needs MUI 3.8 or newer. The installation will "
+        "continue, but the program will not start until MUI is installed."
+    )
+)
+
+(complete 15)
+
+; ----------------------------------------------------------------------
+; Destination drawer
+; ----------------------------------------------------------------------
+
+(set #destination
+    (askdir
+        (prompt
+            "Select the existing drawer where AmiDrop should be installed.\n"
+            "No additional program drawer will be created."
+        )
+        (help
+            "Select the drawer that should directly contain the files "
+            "from the Setup drawer."
+        )
+        (default @default-dest)
+    )
+)
+
+(set @default-dest #destination)
+
+(complete 30)
+
+; ----------------------------------------------------------------------
+; Verify Setup drawer
+; ----------------------------------------------------------------------
+
+(if (<> (exists "Setup") 2)
+    (abort "Required drawer Setup was not found.")
+)
+
+(complete 40)
+
+; ----------------------------------------------------------------------
+; Install exactly the contents of Setup/
+; ----------------------------------------------------------------------
+
+(copyfiles
+    (prompt (cat "Installing " @app-name "..."))
+    (help @copyfiles-help)
+    (source "Setup")
+    (dest #destination)
+    (all)
+    (optional "force")
+)
+
+(complete 100)
+
+; ----------------------------------------------------------------------
+; Finish - no reboot is required or requested.
+; ----------------------------------------------------------------------
+
+(message
+    "AmiDrop_MUI 1.1 installation completed successfully.\n\n"
+    "Start AmiDrop from Workbench, then scan the displayed QR code or open "
+    "the shown address in a web browser."
+)
+
+(exit (quiet))
