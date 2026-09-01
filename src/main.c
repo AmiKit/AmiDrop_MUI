@@ -303,7 +303,14 @@ static BOOL apply_preferences(struct AmiDropGui *gui, struct AmiDropServer *serv
         gui_force_qr_redraw(gui);
     } else {
         if (!server_apply_runtime_prefs(server, candidate)) {
+            /* The alert set inside says the previous folder remains active,
+               but nothing was applied - not the port, not the size limit,
+               not the checkboxes.  Reporting only the folder left the user
+               believing the rest of their changes had been kept. */
+            server->alert[0] = '\0';
             if (layout_changed) reopen_main_gui(gui, server, &old_prefs);
+            gui_message(gui, "Preferences not applied",
+                        "The receive folder could not be opened or created, so none of the changes were applied. The previous settings remain active.");
             return FALSE;
         }
     }
@@ -409,6 +416,10 @@ static BOOL handle_gui_messages(struct AmiDropGui *gui, struct AmiDropServer *se
                 if (!server_is_uploading(server)) {
                     server_clear_history(server);
                     copy_status(server, "Transfer list cleared");
+                } else {
+                    /* Refusing in silence made the button look dead. */
+                    copy_status(server,
+                                "Cannot clear the list while a file is being received");
                 }
             }
         }

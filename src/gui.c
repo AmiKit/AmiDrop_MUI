@@ -674,7 +674,11 @@ static BOOL update_qr(struct AmiDropGui *gui, const struct AmiDropServer *server
     if (!gui) return FALSE;
     was_valid = gui->qr_valid;
 
-    if (!server || !server->address[0] || !server->session_token[0]) {
+    /* Until an IPv4 address is found, server->address holds the literal
+       "http://<Amiga-IP>:8080/" template - encoding that produces a
+       scannable code for a URL that cannot work. */
+    if (!server || !server->address_valid ||
+        !server->address[0] || !server->session_token[0]) {
         gui->qr_valid = FALSE;
         gui->qr_payload[0] = '\0';
         return was_valid;
