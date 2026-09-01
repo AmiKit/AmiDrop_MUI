@@ -15,15 +15,46 @@ AmiDrop is a lightweight native **AmigaOS file transfer utility** for sending fi
 - 6-digit pairing code for PCs and other devices
 - Direct streaming to disk with safe temporary files
 - Configurable receive folder and file size limit
-- **GadTools interface** for classic Amiga screen modes
+- Two interchangeable interfaces: **GadTools** for classic Amiga screen
+  modes, and **MUI**
 
 ## 🖥️ Requirements
 
-- **AmigaOS 3.1 or newer**
+- **AmigaOS 3.0 or newer**
 - TCP/IP stack providing `bsdsocket.library`
 - Network connection between the Amiga and sending device
 
+Each interface adds its own requirement:
+
+| Program | Needs |
+|---|---|
+| `AmiDrop` | nothing beyond the above (GadTools is part of AmigaOS) |
+| `AmiDrop_MUI` | MUI 3.8 (`muimaster.library` 19) or newer |
+
 AmiDrop works with common Amiga TCP/IP stacks such as Roadshow, AmiTCP and Miami.
+
+## 🔨 Building
+
+Cross-compiled with Bebbo's `m68k-amigaos-gcc`. The frontend is selected at
+build time; the network, upload and QR code parts are shared.
+
+```
+make                 # AmiDrop           - GadTools (default)
+make GUI=mui         # AmiDrop_MUI       - MUI 3.8 or newer
+make host-test       # unit tests, compiled and run on the build host
+```
+
+There is a third target, `make GUI=reaction`. It builds the unfinished
+ReAction sources that came with the original project; they are not released,
+not documented and have not been run, so treat that target as a developer
+convenience rather than a version of the program.
+
+The MUI build needs the MUI developer headers. Point `MUI_INCLUDE` at them if
+they are not in the default location:
+
+```
+make GUI=mui MUI_INCLUDE=/path/to/MUI/C/include
+```
 
 ## 🚀 Usage
 
@@ -36,6 +67,8 @@ No software needs to be installed on the sending device.
 ## ⚖️ Credits
 
 AmiDrop © 2026 Andreas "Andiweli" Stürmer.
+
+MUI edition by Jan Zahurancik / AmiKit.
 
 [![Support via PayPal](https://img.shields.io/badge/Support%20via-PayPal-0070BA?logo=paypal&logoColor=white)](https://paypal.me/andiweli)
 

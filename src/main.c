@@ -34,7 +34,10 @@ struct Library *SocketBase = NULL;
 
 static struct MsgPort *instance_port = NULL;
 
-#if defined(AMIDROP_GUI_REACTION)
+#if defined(AMIDROP_GUI_MUI)
+#define AMIDROP_VER_NAME AMIDROP_MUI_NAME
+#define AMIDROP_VER_DATE AMIDROP_MUI_DATE
+#elif defined(AMIDROP_GUI_REACTION)
 #define AMIDROP_VER_NAME AMIDROP_REACTION_NAME
 #define AMIDROP_VER_DATE AMIDROP_REACTION_DATE
 #else
@@ -611,7 +614,7 @@ int main(int argc, char **argv)
             running = handle_gui_events(&gui, &server, &prefs);
         }
         /* After the events, not before.  handle_gui_events() runs the
-           frontend's handlers, and a frontend may decide from the transfer
+           frontend's handlers, and the MUI one decides from the transfer
            state it was last told about whether it may open a requester.
            Moving these two above it would let a transfer begin without the
            frontend knowing until the next pass. */
