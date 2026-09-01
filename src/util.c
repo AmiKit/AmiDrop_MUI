@@ -218,3 +218,20 @@ int amidrop_session_token_matches(const char *candidate, const char *expected)
     }
     return diff == 0;
 }
+
+unsigned long amidrop_percent(unsigned long done, unsigned long total)
+{
+    if (!total) return 0;
+    if (done >= total) return 100;
+
+    /* done * 100 overflows 32 bits above ~42 MB, and a 64-bit multiply and
+       divide are software routines on this target.  Scaling both sides down
+       until the multiply is safe keeps it in 32-bit arithmetic; the loss is
+       at most one part in 100, which a percentage cannot show. */
+    while (done > 42949672UL) {
+        done >>= 4;
+        total >>= 4;
+    }
+    if (!total) return 100;
+    return (done * 100UL) / total;
+}

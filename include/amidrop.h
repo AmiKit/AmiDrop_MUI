@@ -6,7 +6,17 @@
 #define AMIDROP_NAME                 "AmiDrop"
 #define AMIDROP_VERSION              "1.1"
 #define AMIDROP_VERSION_NUMBER       "1.1"
+/* Andiweli's own release date for the GadTools program; ours are below. */
 #define AMIDROP_DATE                 "31.08.2026"
+
+/* Each frontend is a program of its own and needs its own name in the version
+   cookie - two different binaries must never answer to the same
+   "$VER: name version" string.  AmiDrop_ReAction is the name the original
+   ReAction frontend already carried.  Keep the dates current: they are what
+   ends up stamped in the shipped binaries. */
+#define AMIDROP_REACTION_NAME        "AmiDrop_ReAction"
+#define AMIDROP_REACTION_DATE        "01.09.2026"
+
 #define AMIDROP_DEFAULT_PORT         8080
 #define AMIDROP_DEFAULT_LIMIT_KB     51200UL  /* 50 MB */
 #define AMIDROP_MIN_LIMIT_KB         512UL

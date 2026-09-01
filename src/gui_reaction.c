@@ -46,11 +46,60 @@
 #include <string.h>
 
 #include "amidrop.h"
-#include "gui_reaction.h"
+#include "gui.h"
 #include "prefs.h"
 #include "server.h"
+#include "qrcode.h"
+#include "util.h"
 
-extern struct Library *GadToolsBase;
+/* gadtools.library is used for the menu strip only, but it belongs to this
+   frontend all the same. */
+struct Library *GadToolsBase = NULL;
+
+#define RGUI_GID_ABORT  1
+#define RGUI_GID_CLEAR  2
+#define RGUI_GID_QUIT   3
+
+/* Private to the ReAction frontend; main.c only ever sees a pointer. */
+struct AmiDropGui {
+    Object *window_obj;
+    Object *root_layout;
+    Object *status_obj;
+    Object *address_obj;
+    Object *code_obj;
+    Object *receive_obj;
+    Object *limit_obj;
+    Object *progress_obj;
+    Object *qr_obj;
+    Object *history_obj;
+    Object *abort_obj;
+    Object *clear_obj;
+    Object *quit_obj;
+
+    struct Window *window;
+    struct Screen *screen;
+    APTR visual_info;
+    struct Menu *menu;
+    ULONG signal_mask;
+
+    struct List history_list;
+    BOOL history_list_ready;
+    ULONG history_generation;
+
+    struct BitMap *qr_bitmap;
+    QRCode qr;
+    uint8_t qr_modules[AMIDROP_QR_BUFFER_SIZE];
+    char qr_payload[96];
+    BOOL qr_valid;
+    BOOL qr_force_redraw;
+
+    UWORD pending_menu_selection;
+};
+
+static struct AmiDropGui the_gui;
+static BOOL the_gui_in_use = FALSE;
+
+static void gui_close(struct AmiDropGui *gui);
 
 struct Library *WindowBase = NULL;
 struct Library *LayoutBase = NULL;
@@ -100,6 +149,7 @@ static void list_init(struct List *list)
 
 static BOOL open_reaction_libraries(void)
 {
+    GadToolsBase = OpenLibrary((STRPTR)"gadtools.library", 39);
     WindowBase = OpenLibrary((STRPTR)"window.class", REACTION_MIN_VERSION);
     LayoutBase = OpenLibrary((STRPTR)"gadgets/layout.gadget", REACTION_MIN_VERSION);
     ButtonBase = OpenLibrary((STRPTR)"gadgets/button.gadget", REACTION_MIN_VERSION);
@@ -112,7 +162,7 @@ static BOOL open_reaction_libraries(void)
     LabelBase = OpenLibrary((STRPTR)"images/label.image", REACTION_MIN_VERSION);
     RequesterBase = OpenLibrary((STRPTR)"requester.class", REACTION_MIN_VERSION);
 
-    if (!WindowBase || !LayoutBase || !ButtonBase || !ListBrowserBase ||
+    if (!GadToolsBase || !WindowBase || !LayoutBase || !ButtonBase || !ListBrowserBase ||
         !FuelGaugeBase || !ChooserBase || !CheckBoxBase || !GetFileBase ||
         !IntegerBase || !LabelBase || !RequesterBase) {
         close_reaction_libraries();
@@ -134,6 +184,7 @@ static void close_reaction_libraries(void)
     if (ButtonBase) { CloseLibrary(ButtonBase); ButtonBase = NULL; }
     if (LayoutBase) { CloseLibrary(LayoutBase); LayoutBase = NULL; }
     if (WindowBase) { CloseLibrary(WindowBase); WindowBase = NULL; }
+    if (GadToolsBase) { CloseLibrary(GadToolsBase); GadToolsBase = NULL; }
 }
 
 static Object *label_image(const char *text)
@@ -211,7 +262,9 @@ static BOOL update_qr_data(struct AmiDropGui *gui, const struct AmiDropServer *s
 
     if (!gui) return FALSE;
     was_valid = gui->qr_valid;
-    if (!server || !server->address[0] || !server->session_token[0]) {
+    /* See gui.c: the address is a placeholder until one is found. */
+    if (!server || !server->address_valid ||
+        !server->address[0] || !server->session_token[0]) {
         gui->qr_valid = FALSE;
         gui->qr_payload[0] = '\0';
         return was_valid;
@@ -292,13 +345,15 @@ static BOOL create_menu(struct AmiDropGui *gui)
     return TRUE;
 }
 
-BOOL gui_open(struct AmiDropGui *gui)
+static BOOL gui_open(struct AmiDropGui *gui)
 {
     ULONG sigmask = 0;
     if (!gui) return FALSE;
     memset(gui, 0, sizeof(*gui));
     list_init(&gui->history_list);
     gui->history_list_ready = TRUE;
+    /* MENUNULL is not zero, so this cannot be left to the memset above. */
+    gui->pending_menu_selection = MENUNULL;
 
     if (!open_reaction_libraries()) return FALSE;
     gui->screen = LockPubScreen(NULL);
@@ -447,7 +502,7 @@ fail:
     return FALSE;
 }
 
-void gui_close(struct AmiDropGui *gui)
+static void gui_close(struct AmiDropGui *gui)
 {
     if (!gui) return;
     if (gui->window && gui->menu) ClearMenuStrip(gui->window);
@@ -482,6 +537,28 @@ void gui_close(struct AmiDropGui *gui)
         gui->screen = NULL;
     }
     close_reaction_libraries();
+}
+
+struct AmiDropGui *gui_create(const struct AmiDropPrefs *prefs)
+{
+    /* This frontend does not implement ShowTransferInformation yet, so the
+       preferences are only checked for existence. */
+    if (the_gui_in_use || !prefs) return NULL;
+    if (!gui_open(&the_gui)) return NULL;
+    the_gui_in_use = TRUE;
+    return &the_gui;
+}
+
+void gui_destroy(struct AmiDropGui *gui)
+{
+    if (!gui) return;
+    gui_close(gui);
+    the_gui_in_use = FALSE;
+}
+
+ULONG gui_signal_mask(const struct AmiDropGui *gui)
+{
+    return gui ? gui->signal_mask : 0UL;
 }
 
 void gui_force_qr_redraw(struct AmiDropGui *gui)
@@ -524,7 +601,7 @@ void gui_redraw(struct AmiDropGui *gui, const struct AmiDropServer *server,
                    GA_Text, (ULONG)line, TAG_END);
 
     if (server->uploading && server->upload_total > 0) {
-        percent = (ULONG)(((unsigned long long)server->upload_received * 100ULL) / server->upload_total);
+        percent = (ULONG)amidrop_percent(server->upload_received, server->upload_total);
         if (percent > 100UL) percent = 100UL;
     } else if (strncmp(server->status, "Received:", 9) == 0) {
         percent = 100UL;
@@ -576,7 +653,7 @@ void gui_set_abort_enabled(struct AmiDropGui *gui, BOOL enabled)
                    GA_Disabled, !enabled, TAG_END);
 }
 
-ULONG gui_menu_action(struct AmiDropGui *gui, UWORD selection, UWORD *next_selection)
+static ULONG menu_action(struct AmiDropGui *gui, UWORD selection, UWORD *next_selection)
 {
     struct MenuItem *item;
     if (next_selection) *next_selection = MENUNULL;
@@ -587,29 +664,57 @@ ULONG gui_menu_action(struct AmiDropGui *gui, UWORD selection, UWORD *next_selec
     return (ULONG)GTMENUITEM_USERDATA(item);
 }
 
+/* One WMHI_MENUPICK can carry a chain of selected items.  Walk it one entry
+   per call so the main loop sees an ordinary sequence of menu events. */
+static BOOL pull_menu_event(struct AmiDropGui *gui, struct AmiDropGuiEvent *event)
+{
+    while (gui->pending_menu_selection != MENUNULL) {
+        UWORD selection = gui->pending_menu_selection;
+        ULONG action = menu_action(gui, selection, &gui->pending_menu_selection);
+        if (action) {
+            event->type = GUI_EVENT_MENU;
+            event->value = action;
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+void gui_signals_received(struct AmiDropGui *gui, ULONG signals)
+{
+    /* Intuition delivers the messages themselves; the signal bits carry
+       no extra information for this frontend. */
+    (void)gui;
+    (void)signals;
+}
+
 BOOL gui_next_event(struct AmiDropGui *gui, struct AmiDropGuiEvent *event)
 {
     ULONG result;
     WORD code = 0;
+
     if (!event) return FALSE;
-    event->type = RGUI_EVENT_NONE;
+    event->type = GUI_EVENT_NONE;
     event->value = 0;
     if (!gui || !gui->window_obj) return FALSE;
+
+    /* Anything left over from a previous multi-selection comes first. */
+    if (pull_menu_event(gui, event)) return TRUE;
 
     while ((result = RA_HandleInput(gui->window_obj, &code)) != WMHI_LASTMSG) {
         switch (result & WMHI_CLASSMASK) {
             case WMHI_CLOSEWINDOW:
-                event->type = RGUI_EVENT_QUIT;
+                event->type = GUI_EVENT_QUIT;
                 return TRUE;
             case WMHI_MENUPICK:
-                event->type = RGUI_EVENT_MENU;
-                event->value = (ULONG)(UWORD)code;
-                return TRUE;
+                gui->pending_menu_selection = (UWORD)code;
+                if (pull_menu_event(gui, event)) return TRUE;
+                break;
             case WMHI_GADGETUP:
                 switch (result & WMHI_GADGETMASK) {
-                    case RGUI_GID_ABORT: event->type = RGUI_EVENT_ABORT; return TRUE;
-                    case RGUI_GID_CLEAR: event->type = RGUI_EVENT_CLEAR; return TRUE;
-                    case RGUI_GID_QUIT: event->type = RGUI_EVENT_QUIT; return TRUE;
+                    case RGUI_GID_ABORT: event->type = GUI_EVENT_ABORT; return TRUE;
+                    case RGUI_GID_CLEAR: event->type = GUI_EVENT_CLEAR; return TRUE;
+                    case RGUI_GID_QUIT:  event->type = GUI_EVENT_QUIT;  return TRUE;
                     default: break;
                 }
                 break;
@@ -646,6 +751,11 @@ static ULONG show_requester(struct AmiDropGui *gui, const char *title, const cha
     result = DoMethodA(requester, (Msg)&request);
     DisposeObject(requester);
     return result;
+}
+
+const char *gui_startup_hint(void)
+{
+    return "Make sure the AmigaOS 3.2 ReAction classes are installed.";
 }
 
 void gui_message(struct AmiDropGui *gui, const char *title, const char *text)

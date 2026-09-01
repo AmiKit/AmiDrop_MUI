@@ -1,0 +1,6 @@
+# The system gitconfig has core.autocrlf=true. Without this file every clone
+# and every checkout would rewrite these files with CRLF - including
+# AmiDrop.guide, which amigaguide.datatype expects with LF, and the sources,
+# which are cross-compiled for AmigaOS where CRLF is not the convention.
+# Same approach as the LiveUpdate and mpega.library repositories.
+* -text

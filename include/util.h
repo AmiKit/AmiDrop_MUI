@@ -14,4 +14,9 @@ const char *amidrop_find_header_end(const char *buffer, size_t length);
 int amidrop_access_code_matches(const char *candidate, const char *expected);
 int amidrop_session_token_matches(const char *candidate, const char *expected);
 
+/* Percentage of done/total, clamped to 0..100.  Runs on every received
+   network block in all three frontends, so it avoids the 64-bit multiply and
+   divide that the obvious expression compiles into on a 68000 build. */
+unsigned long amidrop_percent(unsigned long done, unsigned long total);
+
 #endif
