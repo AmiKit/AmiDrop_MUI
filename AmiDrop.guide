@@ -5,13 +5,24 @@
 Send files from a phone, tablet or computer directly to your Amiga.
 No companion app is required.
 
-AmiDrop uses a native Intuition/GadTools interface and requires AmigaOS 3.0+.
+AmiDrop requires AmigaOS 3.0+ and comes in two interchangeable versions.
+They receive files in exactly the same way; only the interface differs:
+
+  AmiDrop            GadTools, for classic screen modes. Needs nothing
+                     beyond AmigaOS 3.0.
+  AmiDrop_MUI        Needs MUI 3.8 (muimaster.library 19) or newer.
 
 @{b}Quick start@{ub}
 1. Start AmiDrop.
 2. Phone: scan the QR code.
 3. PC: open the displayed address and enter the 6-digit code.
 4. Choose files and send them.
+
+AmiDrop_MUI has a Copy to Clipboard button beside the address. It copies
+the whole link, access code included, so nothing needs typing on the other
+machine: paste it into a browser and steps 3 and 4 are all that is left.
+Treat the copied link the way you treat the QR code - whoever has it can
+send files until AmiDrop is restarted.
 
 @{"Preferences" link Preferences}
 @{"Safety and failed transfers" link Safety}
@@ -115,6 +126,11 @@ AmiDrop 1.1
 31.08.2026
 
 (c) 2026 Andreas 'Andiweli' Stürmer
+
+AmiDrop_MUI is the MUI version of AmiDrop and shares all of its file
+transfer code.
+
+MUI edition by Jan Zahurancik / AmiKit
 
 Icon by Martin 'Mason' Merz
 

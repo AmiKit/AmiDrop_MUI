@@ -14,6 +14,8 @@
    "$VER: name version" string.  AmiDrop_ReAction is the name the original
    ReAction frontend already carried.  Keep the dates current: they are what
    ends up stamped in the shipped binaries. */
+#define AMIDROP_MUI_NAME             "AmiDrop_MUI"
+#define AMIDROP_MUI_DATE             "01.09.2026"
 #define AMIDROP_REACTION_NAME        "AmiDrop_ReAction"
 #define AMIDROP_REACTION_DATE        "01.09.2026"
 

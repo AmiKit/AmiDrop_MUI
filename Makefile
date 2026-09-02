@@ -6,6 +6,9 @@ CC := m68k-amigaos-gcc
 #   make GUI=reaction -> AmiDrop_ReAction
 GUI ?= gadtools
 
+# MUI headers are not part of the gcc toolchain; point this at the MUI SDK.
+MUI_INCLUDE ?= $(HOME)/amiga-toolchain/mui5/SDK/MUI/C/include
+
 # -MMD -MP make gcc emit a .d file per object listing the headers it read, so
 # a header edit actually rebuilds. Without it, changing include/gui.h - the ABI
 # contract between main.o and the frontend .o - rebuilt nothing at all.
@@ -25,6 +28,18 @@ else ifeq ($(GUI),reaction)
   GUI_LIBS :=
   # The ReAction build ships under its own name, as it already did upstream.
   CFLAGS += -DAMIDROP_GUI_REACTION
+else ifeq ($(GUI),mui)
+  TARGET := AmiDrop_MUI
+  # clipboard.c is built only here for now: it is the only frontend with a
+  # Copy button.  Note this saves the other two only the device half - the IFF
+  # builder and the URL composer live in util.c, which all three link, so they
+  # do carry those.  Move this to COMMON_SOURCES when a second frontend wants
+  # a Copy button.
+  GUI_SOURCES := src/gui_mui.c src/clipboard.c
+  # DoMethod() and friends come from amiga.lib.
+  GUI_LIBS := -lamiga
+  # The MUI build ships under its own name, so it needs its own version cookie.
+  CFLAGS += -DAMIDROP_GUI_MUI
 else
   $(error Unknown GUI "$(GUI)" - use gadtools, reaction or mui)
 endif
@@ -36,6 +51,24 @@ SOURCES := $(COMMON_SOURCES) $(GUI_SOURCES)
 # binary once ended up carrying the GadTools version cookie.
 OBJDIR := obj/$(GUI)
 OBJECTS := $(patsubst src/%.c,$(OBJDIR)/%.o,$(SOURCES))
+
+# MUI's headers dictate two departures from the flags above, both unavoidable:
+#   * NO_INLINE_STDARG hides the varargs MUI_NewObject()/MUI_MakeObject() that
+#     every ApplicationObject/WindowObject/... macro expands to.  With it the
+#     file still compiles, but the link fails on undefined references.
+#   * MUIC_* are char* while MUI_NewObject() takes CONST_STRPTR, so every
+#     object macro would raise -Wpointer-sign from inside MUI's own headers.
+#
+# -fno-inline is NOT optional.  inline/muimaster.h implements MUI_NewObject()
+# as an __inline varargs function that passes &tags onward; that only works
+# when the call stays out-of-line with all arguments on the stack.  GCC 6 at
+# -Os inlines it and DROPS the anonymous varargs, so every ApplicationObject/
+# WindowObject/... handed MUI a tag list one tag long with no TAG_DONE -
+# instant freeze or DEADEND guru on the Amiga, nothing at compile time.
+# Filter the COMPOSED CFLAGS, not BASE_CFLAGS: the GUI branch above has
+# already added -DAMIDROP_GUI_MUI to CFLAGS, and rebuilding from BASE_CFLAGS
+# would silently drop it (and anything else added there later).
+$(OBJDIR)/gui_mui.o: CFLAGS := $(filter-out -DNO_INLINE_STDARG,$(CFLAGS)) -Wno-pointer-sign -fno-inline -I$(MUI_INCLUDE)
 
 HOST_TEST_UTIL := tests/test_util
 HOST_TEST_QR := tests/test_qr
