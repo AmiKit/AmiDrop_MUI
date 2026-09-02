@@ -2,22 +2,19 @@
 #define AMIDROP_GUI_H
 
 #include <exec/types.h>
-#include <exec/lists.h>
+
 #include "amidrop.h"
-#include "server.h"
-#include "qrcode.h"
 
-struct Window;
-struct Screen;
-struct Gadget;
-struct DrawInfo;
-struct Menu;
+struct AmiDropServer;
+struct AmiDropPrefs;
 
-#define GID_ABORT   2
-#define GID_QUIT    3
-#define GID_HISTORY 4
-#define GID_CLEAR   5
+/* The GUI instance is opaque.  Every frontend (GadTools or MUI)
+   defines its own struct AmiDropGui in its own source file, so main.c stays
+   free of any toolkit detail and one main loop serves all of them. */
+struct AmiDropGui;
 
+/* Menu actions.  A frontend translates whatever its own menu system reports
+   into one of these and hands it over as GUI_EVENT_MENU. */
 #define MID_START_SERVER  1UL
 #define MID_STOP_SERVER   2UL
 #define MID_PREFS         3UL
@@ -28,76 +25,63 @@ struct Menu;
 #define PREFS_ACTION_USE    1
 #define PREFS_ACTION_SAVE   2
 
-struct AmiDropGui {
-    struct Screen *screen;
-    APTR visual_info;
-    struct Window *window;
-    struct Gadget *gadget_list;
-    struct Gadget *abort_gadget;
-    struct Gadget *quit_gadget;
-    struct Gadget *history_gadget;
-    struct Gadget *clear_gadget;
-    struct DrawInfo *draw_info;
-    struct Menu *menu;
-    ULONG signal_mask;
+/* Frontend independent events.  Anything toolkit specific - refreshing a
+   simple-refresh window, walking a chain of multi-selected menu items - is
+   handled inside the frontend and never reaches the main loop. */
+#define GUI_EVENT_NONE    0
+#define GUI_EVENT_QUIT    1
+#define GUI_EVENT_ABORT   2
+#define GUI_EVENT_CLEAR   3
+#define GUI_EVENT_MENU    4  /* value holds one of the MID_ codes */
+#define GUI_EVENT_REFRESH 5
 
-    WORD window_width;
-    WORD window_height;
-    WORD text_left;
-    WORD text_right;
-    WORD text_start_y;
-    WORD text_step;
-    WORD bar_top;
-    WORD bar_bottom;
-    WORD progress_right;
-    WORD percent_y;
-    WORD qr_left;
-    WORD qr_top;
-    WORD qr_width;
-    WORD qr_height;
-    WORD qr_area_left;
-    WORD qr_area_top;
-    WORD qr_area_right;
-    WORD qr_area_bottom;
-    WORD qr_center_x;
-    WORD qr_label_y;
-    BOOL show_qr;
-    BOOL compact_layout;
-    BOOL low_height_layout;
-    BOOL show_transfer_information;
-
-    struct List history_list;
-    struct Node history_nodes[AMIDROP_TRANSFER_HISTORY];
-    char history_text[AMIDROP_TRANSFER_HISTORY][AMIDROP_TRANSFER_DISPLAY_MAX];
-    ULONG history_generation;
-
-    QRCode qr;
-    UBYTE qr_modules[AMIDROP_QR_BUFFER_SIZE];
-    char qr_payload[96];
-    BOOL qr_valid;
-    BOOL qr_force_redraw;
-
-    /* Render cache for the GadTools frontend.  Network receive activity can
-       mark the server dirty for every data block, so avoid erasing/redrawing
-       unchanged text and progress graphics on every iteration. */
-    char rendered_lines[6][360];
-    BOOL rendered_line_valid[6];
-    ULONG rendered_percent;
-    WORD rendered_fill_right;
-    BOOL rendered_progress_valid;
-    BOOL render_force;
+struct AmiDropGuiEvent {
+    UWORD type;
+    ULONG value;
 };
 
-BOOL gui_open(struct AmiDropGui *gui, const struct AmiDropPrefs *prefs);
-void gui_close(struct AmiDropGui *gui);
+/* One line naming what this frontend needs, for the startup error message.
+   Valid before gui_create() and after gui_destroy(). */
+const char *gui_startup_hint(void);
+
+/* Creates and opens the interface.  Returns NULL on failure; the pointer
+   stays valid until gui_destroy().  The preferences are needed at this point
+   because they can decide the window layout. */
+struct AmiDropGui *gui_create(const struct AmiDropPrefs *prefs);
+void gui_destroy(struct AmiDropGui *gui);
+
+/* Every function below accepts a NULL interface.  A window rebuild that fails
+   leaves the caller holding NULL until it manages to open one again, and the
+   main loop keeps running meanwhile.  gui_message() and gui_confirm() still
+   put their question to the user in that state; the rest do nothing and
+   return a neutral value. */
+
+/* Signals the main loop has to wait for on behalf of the interface. */
+ULONG gui_signal_mask(const struct AmiDropGui *gui);
+
+/* Handed the signals the main loop actually received, before the events are
+   pulled.  Frontends built on Intuition message ports ignore this; MUI needs
+   it, because MUIM_Application_NewInput wants to be told what woke us. */
+void gui_signals_received(struct AmiDropGui *gui, ULONG signals);
+
+/* Pulls one pending event.  Returns FALSE once the queue is empty. */
+BOOL gui_next_event(struct AmiDropGui *gui, struct AmiDropGuiEvent *event);
+
 void gui_redraw(struct AmiDropGui *gui, const struct AmiDropServer *server,
                 const struct AmiDropPrefs *prefs);
 void gui_sync_history(struct AmiDropGui *gui, const struct AmiDropServer *server);
 void gui_force_qr_redraw(struct AmiDropGui *gui);
+/* Enables or disables the Abort control.  The caller passes whether a
+   transfer is running, and a frontend may treat it as exactly that: the MUI
+   one remembers it, because a modal requester raised mid-transfer stops the
+   main loop long enough for the idle timeout to discard the file.  Do not
+   call it for any other reason. */
 void gui_set_abort_enabled(struct AmiDropGui *gui, BOOL enabled);
-ULONG gui_menu_action(struct AmiDropGui *gui, UWORD selection, UWORD *next_selection);
 int gui_preferences(struct AmiDropGui *gui, struct AmiDropPrefs *prefs);
 void gui_show_about(struct AmiDropGui *gui);
+
+/* These two ask the user even with no interface, so that startup errors can
+   be reported before, or after, one exists. */
 void gui_message(struct AmiDropGui *gui, const char *title, const char *text);
 BOOL gui_confirm(struct AmiDropGui *gui, const char *title, const char *text,
                  const char *yes_text, const char *no_text);

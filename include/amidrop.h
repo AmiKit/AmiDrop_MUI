@@ -4,9 +4,16 @@
 #include <exec/types.h>
 
 #define AMIDROP_NAME                 "AmiDrop"
-#define AMIDROP_VERSION              "1.1"
-#define AMIDROP_VERSION_NUMBER       "1.1"
-#define AMIDROP_DATE                 "31.08.2026"
+#define AMIDROP_VERSION              "1.2"
+#define AMIDROP_VERSION_NUMBER       "1.2"
+/* Release date for the GadTools program. */
+#define AMIDROP_DATE                 "02.09.2026"
+
+/* The MUI frontend is a separate binary and therefore has its own name/date
+   in the $VER cookie while sharing the AmiDrop version number. */
+#define AMIDROP_MUI_NAME             "AmiDrop_MUI"
+#define AMIDROP_MUI_DATE             "02.09.2026"
+
 #define AMIDROP_DEFAULT_PORT         8080
 #define AMIDROP_DEFAULT_LIMIT_KB     51200UL  /* 50 MB */
 #define AMIDROP_MIN_LIMIT_KB         512UL
@@ -37,6 +44,7 @@ struct AmiDropPrefs {
     UWORD port;
     ULONG max_file_kb;
     BOOL start_server;
+    BOOL no_code_needed;
     BOOL ignore_free_space;
     BOOL show_transfer_information;
 };

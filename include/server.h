@@ -19,6 +19,7 @@ struct AmiDropServer {
     BOOL dirty;
     BOOL uploading;
     BOOL address_valid;
+    BOOL no_code_needed;
     BOOL ignore_free_space;
 
     char receive_dir[AMIDROP_PATH_MAX];
@@ -27,7 +28,12 @@ struct AmiDropServer {
 
     char header_buffer[AMIDROP_HTTP_HEADER_MAX + 1];
     ULONG header_length;
+    ULONG header_scan_offset;
+
+    /* Network fragments are accumulated here and written to dos.library in
+       larger blocks.  This keeps filesystem-call overhead down on slow CPUs. */
     UBYTE io_buffer[AMIDROP_IO_BUFFER_SIZE];
+    ULONG io_buffer_used;
 
     /* Upload filename parsing scratch space lives in the static server
        object instead of the 68k task stack. */
@@ -43,6 +49,7 @@ struct AmiDropServer {
     ULONG upload_received;
     ULONG upload_started_at;
     ULONG last_activity_at;
+    ULONG last_progress_percent;
     ULONG last_address_probe_at;
 
     char status[128];
@@ -69,6 +76,7 @@ void server_set_receive_dir(struct AmiDropServer *server, const char *dir);
 void server_prepare_wait(const struct AmiDropServer *server, fd_set *read_fds, LONG *max_fd);
 void server_process_ready(struct AmiDropServer *server, fd_set *read_fds);
 void server_check_timeout(struct AmiDropServer *server);
+void server_reset_idle_timeout(struct AmiDropServer *server);
 void server_abort_upload(struct AmiDropServer *server, const char *reason);
 BOOL server_is_uploading(const struct AmiDropServer *server);
 void server_clear_history(struct AmiDropServer *server);

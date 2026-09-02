@@ -62,6 +62,7 @@ static void close_client(struct AmiDropServer *server)
     }
     server->client_state = AMIDROP_CLIENT_NONE;
     server->header_length = 0;
+    server->header_scan_offset = 0;
 }
 
 static void cleanup_partial(struct AmiDropServer *server)
@@ -77,6 +78,8 @@ static void cleanup_partial(struct AmiDropServer *server)
     server->uploading = FALSE;
     server->upload_total = 0;
     server->upload_received = 0;
+    server->io_buffer_used = 0;
+    server->last_progress_percent = 0;
     server->dirty = TRUE;
 }
 
@@ -331,6 +334,7 @@ static int request_authorization(struct AmiDropServer *server, const char *heade
     BOOL valid = FALSE;
 
     if (!server || !headers) return 0;
+    if (server->no_code_needed) return 1;
     now = now_seconds();
     if (server->auth_block_until && now && now < server->auth_block_until) return -1;
     if (server->auth_block_until && (!now || now >= server->auth_block_until)) {
@@ -362,6 +366,72 @@ static int request_authorization(struct AmiDropServer *server, const char *heade
         return -1;
     }
     return 0;
+}
+
+static BOOL flush_upload_buffer(struct AmiDropServer *server)
+{
+    LONG written;
+
+    if (!server || !server->upload_file) return FALSE;
+    if (server->io_buffer_used == 0) return TRUE;
+
+    written = Write(server->upload_file, server->io_buffer,
+                    (LONG)server->io_buffer_used);
+    if (written != (LONG)server->io_buffer_used) return FALSE;
+
+    server->io_buffer_used = 0;
+    return TRUE;
+}
+
+static BOOL append_upload_data(struct AmiDropServer *server,
+                               const UBYTE *data, ULONG length)
+{
+    while (length > 0) {
+        ULONG room;
+        ULONG chunk;
+
+        if (server->io_buffer_used >= AMIDROP_IO_BUFFER_SIZE &&
+            !flush_upload_buffer(server)) {
+            return FALSE;
+        }
+
+        room = AMIDROP_IO_BUFFER_SIZE - server->io_buffer_used;
+        chunk = length < room ? length : room;
+        if (chunk > 0) {
+            CopyMem((APTR)data, server->io_buffer + server->io_buffer_used, chunk);
+            server->io_buffer_used += chunk;
+            data += chunk;
+            length -= chunk;
+        }
+
+        if (server->io_buffer_used == AMIDROP_IO_BUFFER_SIZE &&
+            !flush_upload_buffer(server)) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static void mark_progress_if_changed(struct AmiDropServer *server)
+{
+    ULONG percent;
+
+    if (!server || !server->uploading || server->upload_total == 0) return;
+    percent = (ULONG)amidrop_percent(server->upload_received, server->upload_total);
+    if (percent != server->last_progress_percent) {
+        server->last_progress_percent = percent;
+        server->dirty = TRUE;
+    }
+}
+
+static BOOL report_disk_write_failure(struct AmiDropServer *server)
+{
+    cleanup_partial(server);
+    send_response(server, 507, "Insufficient Storage", "text/plain; charset=utf-8",
+                  "Disk write failed.\n");
+    set_alert(server, "Disk write failed - partial file removed",
+              "Writing the received file failed. The partial file was removed. Check free space, write protection and that the target volume is still mounted.");
+    return FALSE;
 }
 
 static BOOL prepare_upload(struct AmiDropServer *server, const char *headers, ULONG body_offset)
@@ -425,6 +495,8 @@ static BOOL prepare_upload(struct AmiDropServer *server, const char *headers, UL
     server->current_name[sizeof(server->current_name) - 1] = '\0';
     server->upload_total = content_length;
     server->upload_received = 0;
+    server->io_buffer_used = 0;
+    server->last_progress_percent = 0;
     server->uploading = TRUE;
     server->client_state = AMIDROP_CLIENT_UPLOAD;
     server->upload_started_at = now_seconds();
@@ -433,17 +505,14 @@ static BOOL prepare_upload(struct AmiDropServer *server, const char *headers, UL
 
     if (body_bytes > content_length) body_bytes = content_length;
     if (body_bytes > 0) {
-        LONG written = Write(server->upload_file, server->header_buffer + body_offset, (LONG)body_bytes);
-        if (written != (LONG)body_bytes) {
-            cleanup_partial(server);
-            send_response(server, 507, "Insufficient Storage", "text/plain; charset=utf-8", "Disk write failed.\n");
-            set_alert(server, "Disk write failed - partial file removed",
-                      "Writing the received file failed. The partial file was removed. Check free space, write protection and that the target volume is still mounted.");
-            return FALSE;
+        if (!append_upload_data(server,
+                                (const UBYTE *)(server->header_buffer + body_offset),
+                                body_bytes)) {
+            return report_disk_write_failure(server);
         }
         server->upload_received = body_bytes;
         server->last_activity_at = now_seconds();
-        server->dirty = TRUE;
+        mark_progress_if_changed(server);
     }
     return TRUE;
 }
@@ -495,6 +564,13 @@ static void finish_upload(struct AmiDropServer *server)
     strncpy(completed, server->current_name, sizeof(completed) - 1);
     completed[sizeof(completed) - 1] = '\0';
 
+    /* Network reads are buffered in RAM; the final partial block must reach
+       dos.library before the file is closed and renamed. */
+    if (server->io_buffer_used > 0 && !flush_upload_buffer(server)) {
+        report_disk_write_failure(server);
+        return;
+    }
+
     if (server->upload_file) {
         if (!Close(server->upload_file)) close_ok = FALSE;
         server->upload_file = (BPTR)0;
@@ -521,6 +597,8 @@ static void finish_upload(struct AmiDropServer *server)
     server->temp_path[0] = '\0';
     server->uploading = FALSE;
     server->upload_received = server->upload_total;
+    server->io_buffer_used = 0;
+    server->last_progress_percent = 100;
     add_transfer_history(server, completed, server->upload_total);
     send_response(server, 201, "Created", "text/plain; charset=utf-8", "OK\n");
     set_status_name(server, "Received: ", completed);
@@ -528,10 +606,11 @@ static void finish_upload(struct AmiDropServer *server)
 
 static void send_config(struct AmiDropServer *server)
 {
-    char json[128];
+    char json[160];
     ULONG max_kb = server && server->max_file_bytes ? server->max_file_bytes / 1024UL : AMIDROP_DEFAULT_LIMIT_KB;
-    snprintf(json, sizeof(json), "{\"maxFileKB\":%lu,\"version\":\"%s\"}\n",
-             (unsigned long)max_kb, AMIDROP_VERSION);
+    snprintf(json, sizeof(json), "{\"maxFileKB\":%lu,\"version\":\"%s\",\"noCodeNeeded\":%s}\n",
+             (unsigned long)max_kb, AMIDROP_VERSION,
+             (server && server->no_code_needed) ? "true" : "false");
     send_response(server, 200, "OK", "application/json; charset=utf-8", json);
 }
 
@@ -543,8 +622,17 @@ static void process_headers(struct AmiDropServer *server)
     ULONG body_offset;
 
     server->header_buffer[server->header_length] = '\0';
-    body = amidrop_find_header_end(server->header_buffer, server->header_length);
+    if (server->header_scan_offset > server->header_length)
+        server->header_scan_offset = 0;
+
+    /* Only the last three already-seen bytes can participate in a newly
+       completed "\r\n\r\n" delimiter. Starting there avoids rescanning
+       the whole header for every sender-chosen network fragment. */
+    body = amidrop_find_header_end(server->header_buffer + server->header_scan_offset,
+                                   server->header_length - server->header_scan_offset);
     if (!body) {
+        server->header_scan_offset = server->header_length > 3
+                                   ? server->header_length - 3 : 0;
         if (server->header_length >= AMIDROP_HTTP_HEADER_MAX) {
             send_response(server, 431, "Request Header Fields Too Large", "text/plain; charset=utf-8", "Request headers too large.\n");
         }
@@ -617,9 +705,27 @@ static void process_client_data(struct AmiDropServer *server)
 
     if (server->client_state == AMIDROP_CLIENT_UPLOAD) {
         ULONG remaining = server->upload_total - server->upload_received;
-        ULONG want = remaining;
-        if (want > AMIDROP_IO_BUFFER_SIZE) want = AMIDROP_IO_BUFFER_SIZE;
-        received = recv(server->client_fd, server->io_buffer, (LONG)want, 0);
+        ULONG room;
+        ULONG want;
+
+        if (server->io_buffer_used >= AMIDROP_IO_BUFFER_SIZE &&
+            !flush_upload_buffer(server)) {
+            report_disk_write_failure(server);
+            return;
+        }
+
+        room = AMIDROP_IO_BUFFER_SIZE - server->io_buffer_used;
+        want = remaining < room ? remaining : room;
+        if (want == 0) {
+            finish_upload(server);
+            return;
+        }
+
+        /* Read straight into the unused tail of the disk buffer. Small TCP
+           fragments therefore accumulate without an extra CopyMem(). */
+        received = recv(server->client_fd,
+                        server->io_buffer + server->io_buffer_used,
+                        (LONG)want, 0);
         if (received == 0) {
             cleanup_partial(server);
             close_client(server);
@@ -635,20 +741,20 @@ static void process_client_data(struct AmiDropServer *server)
             return;
         }
         if (received > 0) {
-            LONG written = Write(server->upload_file, server->io_buffer, received);
-            if (written != received) {
-                cleanup_partial(server);
-                send_response(server, 507, "Insufficient Storage", "text/plain; charset=utf-8", "Disk write failed.\n");
-                set_alert(server, "Disk write failed - partial file removed",
-                          "Writing the received file failed. The partial file was removed. Check free space, write protection and that the target volume is still mounted.");
-                return;
-            }
+            server->io_buffer_used += (ULONG)received;
             server->upload_received += (ULONG)received;
             server->last_activity_at = now_seconds();
-            server->dirty = TRUE;
+            mark_progress_if_changed(server);
+
+            if (server->io_buffer_used == AMIDROP_IO_BUFFER_SIZE &&
+                !flush_upload_buffer(server)) {
+                report_disk_write_failure(server);
+                return;
+            }
             if (server->upload_received >= server->upload_total) finish_upload(server);
         }
     }
+
 }
 
 static BOOL determine_address_from_socket(struct AmiDropServer *server, LONG fd);
@@ -666,6 +772,7 @@ static void accept_client(struct AmiDropServer *server)
     server->client_fd = fd;
     server->client_state = AMIDROP_CLIENT_HEADERS;
     server->header_length = 0;
+    server->header_scan_offset = 0;
     server->last_activity_at = now_seconds();
     if (determine_address_from_socket(server, fd)) server->dirty = TRUE;
 }
@@ -775,6 +882,7 @@ BOOL server_start(struct AmiDropServer *server, const struct AmiDropPrefs *prefs
     if (server->running) return TRUE;
     server->port = prefs->port;
     server->max_file_bytes = prefs->max_file_kb * 1024UL;
+    server->no_code_needed = prefs->no_code_needed;
     server->ignore_free_space = prefs->ignore_free_space;
     server_set_receive_dir(server, prefs->receive_dir);
     server->auth_failures = 0;
@@ -783,6 +891,9 @@ BOOL server_start(struct AmiDropServer *server, const struct AmiDropPrefs *prefs
     server->session_token[0] = '\0';
     server->address[0] = '\0';
     server->address_valid = FALSE;
+    server->header_scan_offset = 0;
+    server->io_buffer_used = 0;
+    server->last_progress_percent = 0;
 
     if (!ensure_directory(server->receive_dir)) {
         set_alert(server, "Cannot create/open receive directory",
@@ -829,7 +940,10 @@ BOOL server_start(struct AmiDropServer *server, const struct AmiDropPrefs *prefs
     server->last_address_probe_at = now_seconds();
     generate_session_credentials(server);
     if (server->address_valid) {
-        set_status(server, "Ready - scan QR or open address and enter code");
+        if (server->no_code_needed)
+            set_status(server, "Ready - open address or scan QR (code disabled)");
+        else
+            set_status(server, "Ready - scan QR or open address and enter code");
     } else {
         set_alert(server, "Server running - no usable IPv4 address detected",
                   "AmiDrop is listening, but no active non-loopback IPv4 address was found. Check that the TCP/IP stack is online and the Amiga has an IP address.");
@@ -866,6 +980,11 @@ BOOL server_apply_runtime_prefs(struct AmiDropServer *server, const struct AmiDr
     }
     server_set_receive_dir(server, prefs->receive_dir);
     server->max_file_bytes = prefs->max_file_kb * 1024UL;
+    if (server->no_code_needed != prefs->no_code_needed) {
+        server->auth_failures = 0;
+        server->auth_block_until = 0;
+    }
+    server->no_code_needed = prefs->no_code_needed;
     server->ignore_free_space = prefs->ignore_free_space;
     server->dirty = TRUE;
     return TRUE;
@@ -935,6 +1054,15 @@ void server_check_timeout(struct AmiDropServer *server)
             close_client(server);
         }
     }
+}
+
+void server_reset_idle_timeout(struct AmiDropServer *server)
+{
+    ULONG now;
+
+    if (!server || server->client_fd < 0) return;
+    now = now_seconds();
+    if (now) server->last_activity_at = now;
 }
 
 void server_abort_upload(struct AmiDropServer *server, const char *reason)

@@ -1,0 +1,155 @@
+; Installer script for AmiDrop 1.2
+; Compatible with Commodore/Amiga Technologies Installer V43.3
+;
+; Source layout expected:
+;
+;   Install/
+;     Install-AmiDrop
+;     Setup/
+;       AmiDrop
+;       AmiDrop_MUI
+;       AmiDrop.info
+;
+; The user chooses the frontend before selecting the destination drawer.
+; Both editions are installed as "AmiDrop" in the destination drawer.
+; The selected application drawer itself is used as the destination.
+; No AmiDrop subdrawer is created automatically.
+
+(set @app-name "AmiDrop")
+(set @default-dest "SYS:")
+
+; ----------------------------------------------------------------------
+; Welcome
+; ----------------------------------------------------------------------
+
+(welcome
+    "AmiDrop 1.2\nBrowser-based File Transfer for AmigaOS 3.0+\n(c) 2026 Andreas 'Andiweli' Stuermer"
+)
+
+(complete 10)
+
+; ----------------------------------------------------------------------
+; Frontend selection
+; ----------------------------------------------------------------------
+
+(set #edition
+    (askchoice
+        (prompt
+            "Select the AmiDrop edition to install."
+        )
+        (help
+            "Gadtools Edition uses the classic AmigaOS GadTools interface.\n\n"
+            "MUI Edition requires MUI 3.8 (muimaster.library 19) or newer.\n\n"
+            "Whichever edition you choose will be installed as AmiDrop."
+        )
+        (choices
+            "Gadtools Edition"
+            "MUI Edition (needs MUI 3.8 or newer)"
+        )
+        (default 0)
+    )
+)
+
+(complete 25)
+
+; ----------------------------------------------------------------------
+; Destination drawer
+; The selected drawer is used directly. No new application drawer is
+; automatically created.
+; ----------------------------------------------------------------------
+
+(set #destination
+    (askdir
+        (prompt
+            "Select the existing drawer where AmiDrop should be installed.\n"
+            "No additional program drawer will be created."
+        )
+        (help
+            "Select the drawer that should directly contain AmiDrop "
+            "and AmiDrop.info."
+        )
+        (default @default-dest)
+    )
+)
+
+(set @default-dest #destination)
+
+(complete 40)
+
+; ----------------------------------------------------------------------
+; Verify required source files
+; ----------------------------------------------------------------------
+
+(if (= #edition 0)
+    (
+        (if (= (exists "Setup/AmiDrop") 0)
+            (abort "Required file Setup/AmiDrop was not found.")
+        )
+    )
+    (
+        (if (= (exists "Setup/AmiDrop_MUI") 0)
+            (abort "Required file Setup/AmiDrop_MUI was not found.")
+        )
+    )
+)
+
+(if (= (exists "Setup/AmiDrop.info") 0)
+    (abort "Required file Setup/AmiDrop.info was not found.")
+)
+
+
+(complete 50)
+
+; ----------------------------------------------------------------------
+; Install selected program as AmiDrop
+; ----------------------------------------------------------------------
+
+(if (= #edition 0)
+    (
+        (copyfiles
+            (prompt "Installing AmiDrop Gadtools Edition...")
+            (help @copyfiles-help)
+            (source "Setup/AmiDrop")
+            (dest #destination)
+            (optional "force")
+        )
+    )
+    (
+        (copyfiles
+            (prompt "Installing AmiDrop MUI Edition...")
+            (help @copyfiles-help)
+            (source "Setup/AmiDrop_MUI")
+            (newname "AmiDrop")
+            (dest #destination)
+            (optional "force")
+        )
+    )
+)
+
+(complete 70)
+
+; ----------------------------------------------------------------------
+; Install Workbench icon
+; ----------------------------------------------------------------------
+
+(copyfiles
+    (prompt "Installing AmiDrop icon...")
+    (help @copyfiles-help)
+    (source "Setup/AmiDrop.info")
+    (dest #destination)
+    (optional "force")
+)
+
+(complete 100)
+
+; ----------------------------------------------------------------------
+; Finish - no reboot is required or requested.
+; ----------------------------------------------------------------------
+
+(message
+    "AmiDrop 1.2 installation completed successfully.\n\n"
+    "Start AmiDrop from Workbench, then scan the displayed QR code or open "
+    "the shown address in a web browser."
+)
+
+(exit (quiet))

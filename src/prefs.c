@@ -68,6 +68,7 @@ void prefs_defaults(struct AmiDropPrefs *prefs)
     prefs->port = AMIDROP_DEFAULT_PORT;
     prefs->max_file_kb = AMIDROP_DEFAULT_LIMIT_KB;
     prefs->start_server = AMIDROP_DEFAULT_START_SERVER;
+    prefs->no_code_needed = FALSE;
     prefs->ignore_free_space = FALSE;
     prefs->show_transfer_information = TRUE;
 }
@@ -116,6 +117,8 @@ static BOOL load_from_file(struct AmiDropPrefs *prefs, const char *path)
             if (prefs_valid_max_file_mb(number)) prefs->max_file_kb = number * 1024UL;
         } else if (strcmp(key, "StartServer") == 0) {
             if (prefs_parse_yes_no(value, &boolean_value)) prefs->start_server = boolean_value;
+        } else if (strcmp(key, "NoCodeNeeded") == 0) {
+            if (prefs_parse_yes_no(value, &boolean_value)) prefs->no_code_needed = boolean_value;
         } else if (strcmp(key, "IgnoreFreeSpace") == 0) {
             if (prefs_parse_yes_no(value, &boolean_value)) prefs->ignore_free_space = boolean_value;
         } else if (strcmp(key, "ShowTransferInformation") == 0) {
@@ -138,20 +141,29 @@ BOOL prefs_load(struct AmiDropPrefs *prefs)
 BOOL prefs_save(const struct AmiDropPrefs *prefs)
 {
     FILE *file;
+    int failed;
     if (!prefs) return FALSE;
 
     file = fopen(AMIDROP_PREFS_FILE, "w");
     if (!file) file = fopen(AMIDROP_FALLBACK_PREFS, "w");
     if (!file) return FALSE;
 
-    fprintf(file, "# AmiDrop %s preferences\n", AMIDROP_VERSION);
-    fprintf(file, "ReceiveDir=%s\n", prefs->receive_dir);
-    fprintf(file, "Port=%u\n", (unsigned)prefs->port);
-    fprintf(file, "MaxFileKB=%lu\n", (unsigned long)prefs->max_file_kb);
-    fprintf(file, "StartServer=%s\n", prefs->start_server ? "YES" : "NO");
-    fprintf(file, "IgnoreFreeSpace=%s\n", prefs->ignore_free_space ? "YES" : "NO");
-    fprintf(file, "ShowTransferInformation=%s\n",
-            prefs->show_transfer_information ? "YES" : "NO");
-    fclose(file);
-    return TRUE;
+    /* Every write is checked.  A full or failing ENVARC: used to leave a
+       truncated preferences file behind and still report success, so the
+       user was told "Preferences saved" over a file that would not load. */
+    failed = 0;
+    failed |= fprintf(file, "# AmiDrop %s preferences\n", AMIDROP_VERSION) < 0;
+    failed |= fprintf(file, "ReceiveDir=%s\n", prefs->receive_dir) < 0;
+    failed |= fprintf(file, "Port=%u\n", (unsigned)prefs->port) < 0;
+    failed |= fprintf(file, "MaxFileKB=%lu\n", (unsigned long)prefs->max_file_kb) < 0;
+    failed |= fprintf(file, "StartServer=%s\n", prefs->start_server ? "YES" : "NO") < 0;
+    failed |= fprintf(file, "NoCodeNeeded=%s\n", prefs->no_code_needed ? "YES" : "NO") < 0;
+    failed |= fprintf(file, "IgnoreFreeSpace=%s\n", prefs->ignore_free_space ? "YES" : "NO") < 0;
+    failed |= fprintf(file, "ShowTransferInformation=%s\n",
+                      prefs->show_transfer_information ? "YES" : "NO") < 0;
+
+    /* The buffered data is only really written here, so this is the check
+       that matters most. */
+    if (fclose(file) != 0) failed = 1;
+    return failed ? FALSE : TRUE;
 }

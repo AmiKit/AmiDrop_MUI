@@ -1,7 +1,8 @@
-# AmiDrop 1.1 preferences
+# AmiDrop 1.2 preferences
 ReceiveDir=Work:Downloads/AmiDrop
 Port=8080
 MaxFileKB=51200
 StartServer=YES
+NoCodeNeeded=NO
 IgnoreFreeSpace=NO
 ShowTransferInformation=YES

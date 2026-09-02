@@ -1,17 +1,29 @@
 @database AmiDrop.guide
-@node Main "AmiDrop 1.1"
-@{b}AmiDrop 1.1@{ub}
+@node Main "AmiDrop 1.2"
+@{b}AmiDrop 1.2@{ub}
 
 Send files from a phone, tablet or computer directly to your Amiga.
 No companion app is required.
 
-AmiDrop uses a native Intuition/GadTools interface and requires AmigaOS 3.0+.
+AmiDrop requires AmigaOS 3.0+ and comes in two interchangeable versions.
+They receive files in exactly the same way; only the interface differs:
+
+  AmiDrop            GadTools, for classic screen modes. Needs nothing
+                     beyond AmigaOS 3.0.
+  AmiDrop_MUI        MUI edition by Jan Zahurancik / AmiKit.
+                     Needs MUI 3.8 (muimaster.library 19) or newer.
 
 @{b}Quick start@{ub}
 1. Start AmiDrop.
 2. Phone: scan the QR code.
 3. PC: open the displayed address and enter the 6-digit code.
+   If "No Code needed" is enabled, opening the address is enough.
 4. Choose files and send them.
+
+AmiDrop_MUI has a Copy to Clipboard button beside the address. With code
+protection enabled it copies the session-protected link; with "No Code needed"
+it copies the plain AmiDrop address. Paste it into a browser and nothing needs
+typing on the other machine.
 
 @{"Preferences" link Preferences}
 @{"Safety and failed transfers" link Safety}
@@ -30,17 +42,23 @@ Receive folder
 Max. file size
   512 KB, 1 MB, 5 MB, 10 MB, 25 MB, 50 MB, 100 MB, 250 MB, 500 MB or 1 GB.
 
-Ignore free-space check
-  Normally AmiDrop requires the receive volume to hold the selected maximum
-  file size plus a small safety reserve. Enable this only for intentionally
-  small targets such as RAM: where you want to accept the risk of running out
-  of space.
-
 TCP port
   Default: 8080. Valid range: 1024-65535.
 
 Start server on launch
   If disabled, use Project > Start server.
+
+No Code needed
+  Disables the 6-digit access-code requirement. A browser that opens the
+  displayed AmiDrop address can send files immediately. Use this only on a
+  trusted local network. The main window shows "Deactivated by user" instead
+  of a code while this option is active.
+
+Ignore free-space check
+  Normally AmiDrop requires the receive volume to hold the selected maximum
+  file size plus a small safety reserve. Enable this only for intentionally
+  small targets such as RAM: where you want to accept the risk of running out
+  of space.
 
 Show transfer information
   Shows the successful-transfer list and Clear list button in the lower part
@@ -63,8 +81,10 @@ Only a complete transfer is renamed to the final filename.
 If a transfer is aborted, times out, loses the network connection or cannot be
 written to disk, the partial file is removed.
 
-Five wrong login attempts lock access for 30 seconds.
-QR tokens and access codes are recreated whenever the server is restarted.
+With code protection enabled, five wrong login attempts lock access for
+30 seconds. QR tokens and access codes are recreated whenever the server is
+restarted. If "No Code needed" is enabled, anyone who can reach the AmiDrop
+address on the local network can send files.
 
 @{"Back" link Main}
 @endnode
@@ -76,10 +96,11 @@ PORT=8080
 MAXSIZEKB=51200
 RECEIVEDIR=Work:Downloads/AmiDrop
 STARTSERVER=YES
+NOCODENEEDED=NO
 IGNORESPACE=NO
 SHOWTRANSFERINFO=YES
 
-STARTSERVER, IGNORESPACE and SHOWTRANSFERINFO accept YES/NO, TRUE/FALSE, ON/OFF or 1/0.
+STARTSERVER, NOCODENEEDED, IGNORESPACE and SHOWTRANSFERINFO accept YES/NO, TRUE/FALSE, ON/OFF or 1/0.
 MAXSIZEKB is the precise limit in KB. Legacy MAXSIZE values in whole MB are
 still accepted.
 
@@ -111,10 +132,14 @@ Phone cannot connect
 @endnode
 
 @node About "About"
-AmiDrop 1.1
-31.08.2026
+AmiDrop 1.2
+02.09.2026
 
 (c) 2026 Andreas 'Andiweli' Stürmer
+
+MUI Edition by Jan Zahurancik / AmiKit
+
+Shares all file transfer code with AmiDrop.
 
 Icon by Martin 'Mason' Merz
 
